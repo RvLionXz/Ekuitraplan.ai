@@ -1,12 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { Menu, X, Globe, Share2 } from "lucide-react";
+import Image from "next/image";
+import { Menu, X, Globe, Share2, User } from "lucide-react";
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 
 export default function Navbar() {
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setIsOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -15,6 +23,13 @@ export default function Navbar() {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  const navLinks = [
+    { name: "Explore", href: "/explore" },
+    { name: "Sustainability", href: "/sustainability" },
+    { name: "Eco-Certifications", href: "/eco-certifications" },
+    { name: "Itineraries", href: "/itineraries" },
+  ];
 
   return (
     <nav 
@@ -25,53 +40,36 @@ export default function Navbar() {
       <div className="container mx-auto px-6 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 group">
-          <span className={`text-xl font-bold tracking-tight transition-colors ${scrolled ? "text-gradient" : "text-white drop-shadow-md"}`}>
-            Ekuitraplan.ai
-          </span>
+          <div className="relative w-40 h-10">
+            <Image 
+              src={scrolled ? "/images/Logo-Hijau.png" : "/images/Logo-Putih.png"}
+              alt="Ekuitraplan Logo"
+              fill
+              className="object-contain transition-all duration-300"
+              priority
+            />
+          </div>
         </Link>
 
-        {/* Desktop Nav */}
-        <div className="hidden md:flex items-center gap-10">
-          <div className={`flex items-center gap-8 text-sm font-medium transition-colors ${scrolled ? "text-text-primary" : "text-white"}`}>
-            <Link href="/explore" className="hover:text-secondary transition-colors underline-offset-8 hover:underline">Explore</Link>
-            <Link href="/sustainability" className="hover:text-secondary transition-colors underline-offset-8 hover:underline">Sustainability</Link>
-            <Link href="/eco-certifications" className="hover:text-secondary transition-colors underline-offset-8 hover:underline">Eco-Certifications</Link>
-            <Link href="/itineraries" className="hover:text-secondary transition-colors underline-offset-8 hover:underline">Itineraries</Link>
+        {/* Action Area */}
+        <div className="flex items-center gap-4">
+          <div className={`hidden md:flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors ${scrolled ? "text-text-primary" : "text-white/80"}`}>
+            <Globe size={14} />
+            ID | EN
           </div>
-
-          <div className="flex items-center gap-6">
-            <Link href="/signin" className={`text-sm font-medium transition-colors hover:text-secondary ${scrolled ? "text-text-primary" : "text-white"}`}>
-              Sign In
-            </Link>
-            <button className="button-gradient text-white px-6 py-2.5 rounded-full text-sm font-bold transition-all active:scale-95 shadow-lg">
-              Plan Your Trip
-            </button>
-          </div>
+          <Link 
+            href="/login" 
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${
+              scrolled 
+                ? "bg-primary text-white shadow-lg" 
+                : "bg-white/20 backdrop-blur-md text-white border border-white/30 hover:bg-white/30"
+            }`}
+          >
+            <User size={16} />
+            Masuk
+          </Link>
         </div>
-
-        {/* Mobile Toggle */}
-        <button 
-          className={`md:hidden p-2 transition-colors ${scrolled ? "text-text-primary" : "text-white"}`}
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          {isOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
       </div>
-
-      {/* Mobile Nav */}
-      {isOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 glass border-b border-black/5 p-6 flex flex-col gap-4 animate-in fade-in slide-in-from-top-4">
-          <Link href="/explore" className="text-lg font-medium text-text-primary">Explore</Link>
-          <Link href="/sustainability" className="text-lg font-medium text-text-primary">Sustainability</Link>
-          <Link href="/eco-certifications" className="text-lg font-medium text-text-primary">Eco-Certifications</Link>
-          <Link href="/itineraries" className="text-lg font-medium text-text-primary">Itineraries</Link>
-          <hr />
-          <Link href="/signin" className="text-lg font-medium text-text-primary">Sign In</Link>
-          <button className="button-gradient text-white py-4 rounded-xl font-bold">
-            Plan Your Trip
-          </button>
-        </div>
-      )}
     </nav>
   );
 }

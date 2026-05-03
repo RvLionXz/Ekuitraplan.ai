@@ -10,8 +10,11 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Ekuitraplan.ai | Regenerative AI Travel Planner",
-  description: "AI-powered travel planner specializing in low-carbon and regenerative tourism.",
+  title: "Ekuitraplan.ai | Perencana Perjalanan AI Berkelanjutan",
+  description: "Perencana perjalanan bertenaga AI yang fokus pada pariwisata rendah karbon dan regeneratif.",
+  icons: {
+    icon: "/images/Icon-Hijau.png",
+  },
 };
 
 export default function RootLayout({
@@ -20,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased`}>
+    <html lang="id" className={`${inter.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col font-sans">
         <Navbar />
         <div className="flex-1">{children}</div>
