@@ -1,0 +1,187 @@
+// Ekuitraplan.ai — Prisma Schema
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ──────────────────────────────────────────────
+// Auth Models (NextAuth / Auth.js adapter)
+// ──────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  // User preferences
+  preferredBudget   String?   // e.g. "budget", "mid-range", "luxury"
+  travelStyle       String?   // e.g. "adventure", "relax", "cultural"
+  dietPreference    String?   // e.g. "vegetarian", "halal", "none"
+
+  accounts      Account[]
+  sessions      Session[]
+  trips         Trip[]
+  chatSessions  ChatSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ──────────────────────────────────────────────
+// Core Domain Models
+// ──────────────────────────────────────────────
+
+model Trip {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  destination String
+  startDate   DateTime?
+  endDate     DateTime?
+  travelers   Int      @default(1)
+  budget      String?  // e.g. "budget", "mid-range", "luxury"
+  status      String   @default("draft") // draft | planned | completed
+
+  // Carbon metrics (aggregate for the entire trip)
+  totalCarbonKg   Float?
+  carbonOffsetKg  Float?
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itineraries  Itinerary[]
+  chatSession  ChatSession?
+  carbonOffsets CarbonOffset[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Itinerary {
+  id        String   @id @default(cuid())
+  tripId    String
+  dayNumber Int      // Day 1, Day 2, …
+  date      DateTime?
+
+  trip       Trip             @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  activities ItineraryActivity[]
+
+  @@index([tripId])
+}
+
+model ItineraryActivity {
+  id           String  @id @default(cuid())
+  itineraryId  String
+  sortOrder    Int     @default(0)
+  title        String
+  description  String? @db.Text
+  location     String?
+  latitude     Float?
+  longitude    Float?
+  startTime    String? // e.g. "09:00"
+  endTime      String? // e.g. "12:00"
+  category     String? // e.g. "attraction", "restaurant", "transport", "eco-activity"
+  isEcoFriendly Boolean @default(false)
+  carbonKg     Float?  // Estimated carbon for this activity
+
+  itinerary Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+
+  @@index([itineraryId])
+}
+
+// ──────────────────────────────────────────────
+// Chat / AI Conversation
+// ──────────────────────────────────────────────
+
+model ChatSession {
+  id      String @id @default(cuid())
+  userId  String
+  tripId  String? @unique // Optionally linked to a trip
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip     Trip?         @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model ChatMessage {
+  id            String @id @default(cuid())
+  chatSessionId String
+  role          String // "user" | "assistant" | "system"
+  content       String @db.Text
+
+  chatSession ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([chatSessionId])
+}
+
+// ──────────────────────────────────────────────
+// Carbon Offset & Eco Restoration
+// ──────────────────────────────────────────────
+
+model CarbonOffset {
+  id          String @id @default(cuid())
+  tripId      String
+  type        String // e.g. "mangrove-planting", "coral-restoration", "reforestation"
+  title       String
+  description String? @db.Text
+  location    String?
+  amountKg    Float  // Carbon offset in kg CO2
+  cost        Float? // Estimated cost in IDR
+  status      String @default("pending") // pending | completed
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([tripId])
+}
