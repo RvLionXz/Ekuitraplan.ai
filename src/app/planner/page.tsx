@@ -18,6 +18,7 @@ import {
   Info,
   Layers
 } from "lucide-react";
+import ReactMarkdown from 'react-markdown';
 
 function PlannerContent() {
   const searchParams = useSearchParams();
@@ -29,6 +30,8 @@ function PlannerContent() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'map'>('chat');
 
+  const [itinerary, setItinerary] = useState<any>(null);
+
   // Initial trigger if there's a query from landing page
   useEffect(() => {
     if (initialQuery && messages.length === 0) {
@@ -36,22 +39,43 @@ function PlannerContent() {
     }
   }, [initialQuery]);
 
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
     
-    const newMessages = [...messages, { role: 'user' as const, content: text }];
+    const userMessage = { role: 'user' as const, content: text };
+    const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInputValue("");
     setIsGenerating(true);
 
-    // Mock AI Response for now (Phase 1)
-    setTimeout(() => {
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: newMessages }),
+      });
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      // Simple and direct mapping thanks to Function Calling
+      if (data.itinerary_data) {
+        setItinerary(data.itinerary_data);
+      }
+      
       setMessages(prev => [...prev, { 
         role: 'ai', 
-        content: "Halo! Saya sedang merancang rencana perjalanan ramah lingkungan terbaik untuk Anda ke " + text + ". Mohon tunggu sebentar selagi saya menghitung rute paling efisien karbon..." 
+        content: data.chat_response || "Berikut adalah rencana perjalanan Anda." 
       }]);
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      setMessages(prev => [...prev, { 
+        role: 'ai', 
+        content: "Maaf, terjadi kesalahan saat menghubungi asisten AI. Silakan coba lagi." 
+      }]);
+    } finally {
       setIsGenerating(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -70,15 +94,17 @@ function PlannerContent() {
               <ArrowLeft size={18} />
             </button>
             <div>
-              <h1 className="font-bold text-text-primary text-sm md:text-base">Rencana Perjalanan</h1>
+              <h1 className="font-bold text-text-primary text-sm md:text-base">
+                {itinerary?.trip_metadata?.title || "Rencana Perjalanan"}
+              </h1>
               <div className="flex items-center gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest text-secondary">
                 <Leaf size={10} />
-                Eco-Certified
+                {itinerary?.trip_metadata?.region || "Eco-Certified"}
               </div>
             </div>
           </div>
           <div className="bg-secondary/10 text-secondary px-3 py-1 rounded-full text-[10px] font-bold border border-secondary/20">
-            Skor: 92
+            Skor: {itinerary?.trip_metadata?.total_eco_score || "--"}
           </div>
         </div>
 
@@ -105,10 +131,56 @@ function PlannerContent() {
                   ? 'bg-primary text-white shadow-lg' 
                   : 'bg-light-gray text-text-primary border border-black/5'
               }`}>
-                {msg.content}
+                {msg.role === 'ai' ? (
+                  <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-strong:text-secondary prose-strong:font-black">
+                    <ReactMarkdown>
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  msg.content
+                )}
               </div>
             </div>
           ))}
+
+          {/* Render Itinerary Timeline if available */}
+          {itinerary && (
+            <div className="space-y-8 mt-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+              {itinerary.itinerary.map((day: any, i: number) => (
+                <div key={i} className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-secondary text-white w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs">
+                      {day.day}
+                    </div>
+                    <h3 className="font-bold text-text-primary">{day.theme}</h3>
+                  </div>
+                  <div className="space-y-4 ml-4 border-l-2 border-secondary/10 pl-6">
+                    {day.activities.map((act: any, j: number) => (
+                      <div key={j} className="relative group">
+                        <div className="absolute -left-[31px] top-2 w-3 h-3 rounded-full bg-white border-2 border-secondary group-hover:scale-125 transition-all" />
+                        <div className="glass p-4 rounded-2xl border-black/5 hover:border-secondary/20 transition-all cursor-pointer">
+                          <div className="flex justify-between items-start mb-2">
+                             <span className="text-[10px] font-black text-secondary">{act.time}</span>
+                             <div className="flex items-center gap-1 bg-green-50 text-[8px] font-bold text-green-700 px-2 py-0.5 rounded-full uppercase">
+                               <Leaf size={8} />
+                               {act.eco_impact}
+                             </div>
+                          </div>
+                          <h4 className="font-bold text-sm text-text-primary mb-1">{act.activity}</h4>
+                          <p className="text-xs text-text-secondary leading-relaxed line-clamp-2">{act.description}</p>
+                          <div className="flex items-center gap-1 mt-3 text-[10px] font-bold text-text-muted">
+                            <MapPin size={10} />
+                            {act.location}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {isGenerating && (
             <div className="flex justify-start">
