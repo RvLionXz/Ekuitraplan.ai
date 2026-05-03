@@ -61,12 +61,12 @@ export default function Home() {
 
         <div className="container relative z-10 mx-auto px-6 text-center">
           <div className="max-w-4xl mx-auto space-y-12 animate-slide-up">
-            <div className="space-y-6">
-              <h1 className="text-5xl md:text-7xl font-bold text-white tracking-tight leading-tight">
+            <div className="space-y-4 md:space-y-6">
+              <h1 className="text-4xl md:text-7xl font-bold text-white tracking-tight leading-tight">
                 Halo, <br className="md:hidden" />
                 <span className="text-secondary">mau liburan ke mana</span> hari ini?
               </h1>
-              <p className="text-lg md:text-xl text-white/80 max-w-2xl mx-auto leading-relaxed">
+              <p className="text-base md:text-xl text-white/80 max-w-2xl mx-auto leading-relaxed">
                 Ceritakan gaya liburan dan anggaranmu, saya akan merancang perjalanan ramah lingkungan terbaik untukmu.
               </p>
             </div>
@@ -82,21 +82,21 @@ export default function Home() {
                   onChange={(e) => setSearchValue(e.target.value)}
                 />
                 <div className="flex items-center justify-between mt-2 pt-4 border-t border-white/10">
-                  <div className="flex items-center gap-4 px-2">
-                    <button className="text-white/60 hover:text-white transition-colors" title="Gunakan Suara">
-                      <Mic size={20} />
+                  <div className="flex items-center gap-3 md:gap-4 px-2">
+                    <button className="text-white/60 hover:text-white transition-colors p-2" title="Gunakan Suara">
+                      <Mic size={18} className="md:w-5 md:h-5" />
                     </button>
-                    <button className="text-white/60 hover:text-white transition-colors" title="Lokasi Terdekat">
-                      <Waves size={20} />
+                    <button className="text-white/60 hover:text-white transition-colors p-2" title="Lokasi Terdekat">
+                      <Waves size={18} className="md:w-5 md:h-5" />
                     </button>
                   </div>
                   <button 
                     onClick={() => router.push(`/planner?q=${encodeURIComponent(searchValue)}`)}
                     disabled={!searchValue.trim()}
-                    className="button-gradient text-white px-8 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95 group disabled:opacity-50"
+                    className="button-gradient text-white px-5 md:px-8 py-2.5 md:py-3 rounded-xl md:rounded-2xl text-sm md:text-base font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95 group disabled:opacity-50"
                   >
-                    <Zap size={18} className="fill-current group-hover:animate-pulse" />
-                    Rancang Liburanku
+                    <Zap size={16} className="md:w-[18px] md:h-[18px] fill-current group-hover:animate-pulse" />
+                    Rancang Liburan
                   </button>
                 </div>
               </div>
