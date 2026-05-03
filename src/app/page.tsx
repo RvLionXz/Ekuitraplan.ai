@@ -11,8 +11,10 @@ import {
   Zap
 } from "lucide-react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const router = useRouter();
   const [searchValue, setSearchValue] = useState("");
 
   const destinations = [
@@ -88,7 +90,11 @@ export default function Home() {
                       <Waves size={20} />
                     </button>
                   </div>
-                  <button className="button-gradient text-white px-8 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95 group">
+                  <button 
+                    onClick={() => router.push(`/planner?q=${encodeURIComponent(searchValue)}`)}
+                    disabled={!searchValue.trim()}
+                    className="button-gradient text-white px-8 py-3 rounded-2xl font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95 group disabled:opacity-50"
+                  >
                     <Zap size={18} className="fill-current group-hover:animate-pulse" />
                     Rancang Liburanku
                   </button>
@@ -103,7 +109,11 @@ export default function Home() {
                   "Gunakan suara",
                   "Wisata Eco-Green"
                 ].map((label, i) => (
-                  <button key={i} className="bg-white/10 backdrop-blur-md py-2.5 px-6 rounded-full text-xs font-bold text-white/90 hover:bg-white/20 transition-all border border-white/20">
+                  <button 
+                    key={i} 
+                    onClick={() => router.push(`/planner?q=${encodeURIComponent(label)}`)}
+                    className="bg-white/10 backdrop-blur-md py-2.5 px-6 rounded-full text-xs font-bold text-white/90 hover:bg-white/20 transition-all border border-white/20"
+                  >
                     {label}
                   </button>
                 ))}
