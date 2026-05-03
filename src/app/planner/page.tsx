@@ -16,9 +16,14 @@ import {
   Waves,
   Zap,
   Info,
-  Layers
+  Layers,
+  Star,
+  Users,
+  CreditCard,
+  Plane
 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
+import { motion, AnimatePresence } from "framer-motion";
 
 function PlannerContent() {
   const searchParams = useSearchParams();
@@ -29,8 +34,9 @@ function PlannerContent() {
   const [inputValue, setInputValue] = useState(initialQuery);
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'map'>('chat');
-
   const [itinerary, setItinerary] = useState<any>(null);
+  const [discoveryData, setDiscoveryData] = useState<any>(null);
+  const [hoveredItem, setHoveredItem] = useState<any>(null);
 
   // Initial trigger if there's a query from landing page
   useEffect(() => {
@@ -38,6 +44,28 @@ function PlannerContent() {
       handleSendMessage(initialQuery);
     }
   }, [initialQuery]);
+
+  // Set initial hovered item when itinerary or discovery data arrives
+  useEffect(() => {
+    if (discoveryData?.hotels?.[0]) {
+      setHoveredItem({
+        type: 'hotel',
+        name: discoveryData.hotels[0].name,
+        image: discoveryData.hotels[0].image,
+        location: discoveryData.hotels[0].region || itinerary?.trip_metadata?.region,
+        label: 'Rekomendasi Utama'
+      });
+    } else if (itinerary?.itinerary?.[0]?.activities?.[0]) {
+      const firstAct = itinerary.itinerary[0].activities[0];
+      setHoveredItem({
+        type: 'activity',
+        name: firstAct.activity,
+        image: '/images/generic-eco.png',
+        location: firstAct.location,
+        label: 'Pemberhentian 1'
+      });
+    }
+  }, [discoveryData, itinerary]);
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
@@ -58,9 +86,13 @@ function PlannerContent() {
       const data = await response.json();
       if (data.error) throw new Error(data.error);
 
-      // Simple and direct mapping thanks to Function Calling
+      // Mapping structured fields
       if (data.itinerary_data) {
         setItinerary(data.itinerary_data);
+      }
+      
+      if (data.enriched_data) {
+        setDiscoveryData(data.enriched_data);
       }
       
       setMessages(prev => [...prev, { 
@@ -94,12 +126,13 @@ function PlannerContent() {
               <ArrowLeft size={18} />
             </button>
             <div>
-              <h1 className="font-bold text-text-primary text-sm md:text-base">
-                {itinerary?.trip_metadata?.title || "Rencana Perjalanan"}
+              <h1 className="font-bold text-text-primary text-sm md:text-base flex items-center gap-2">
+                {itinerary?.trip_metadata?.title || "Konsultasi dengan Liora"}
+                {!itinerary && <Sparkles size={14} className="text-secondary animate-pulse" />}
               </h1>
               <div className="flex items-center gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest text-secondary">
                 <Leaf size={10} />
-                {itinerary?.trip_metadata?.region || "Eco-Certified"}
+                {itinerary?.trip_metadata?.region || "Kurator Perjalanan Regeneratif"}
               </div>
             </div>
           </div>
@@ -111,26 +144,43 @@ function PlannerContent() {
         {/* Chat / Content Area */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 md:space-y-8 scrollbar-hide pb-24 md:pb-6">
           {messages.length === 0 && !isGenerating && (
-            <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-40">
-              <div className="w-16 h-16 rounded-full bg-secondary/10 flex items-center justify-center text-secondary">
-                <Sparkles size={32} />
+            <div className="h-full flex flex-col items-center justify-center text-center space-y-6 py-12">
+              <div className="relative">
+                <div className="w-20 h-20 rounded-full bg-secondary/10 flex items-center justify-center text-secondary">
+                  <Sparkles size={40} />
+                </div>
+                <div className="absolute -bottom-2 -right-2 bg-primary text-white p-1.5 rounded-lg shadow-lg">
+                  <Waves size={16} />
+                </div>
               </div>
-              <p className="text-xs font-medium max-w-[200px]">
-                Mulai ceritakan detail perjalanan impian Anda di bawah ini.
-              </p>
+              <div className="space-y-2">
+                <h2 className="text-lg font-black text-text-primary">Halo! Saya Liora ✨</h2>
+                <p className="text-xs font-medium text-text-muted max-w-[280px] leading-relaxed">
+                  Siap merancang perjalanan yang tidak hanya berkesan, tapi juga bermakna bagi bumi? Ceritakan destinasi impian Anda.
+                </p>
+              </div>
             </div>
           )}
 
           {messages.map((msg, idx) => (
             <div 
               key={idx} 
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2`}
+              className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2`}
             >
-              <div className={`max-w-[90%] md:max-w-[85%] p-3 md:p-4 rounded-2xl text-sm ${
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`max-w-[90%] md:max-w-[85%] p-3 md:p-4 rounded-2xl text-sm relative ${
                 msg.role === 'user' 
-                  ? 'bg-primary text-white shadow-lg' 
-                  : 'bg-light-gray text-text-primary border border-black/5'
+                  ? 'bg-primary text-white shadow-lg rounded-tr-none' 
+                  : 'bg-light-gray text-text-primary border border-black/5 rounded-tl-none'
               }`}>
+                {msg.role === 'ai' && (
+                  <div className="absolute -top-6 left-0 text-[10px] font-black text-secondary uppercase tracking-widest flex items-center gap-1">
+                    <Sparkles size={10} />
+                    Liora
+                  </div>
+                )}
                 {msg.role === 'ai' ? (
                   <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-strong:text-secondary prose-strong:font-black">
                     <ReactMarkdown>
@@ -140,7 +190,93 @@ function PlannerContent() {
                 ) : (
                   msg.content
                 )}
-              </div>
+              </motion.div>
+
+              {/* Discovery Section (Only for AI last message with data) */}
+              {msg.role === 'ai' && idx === messages.length - 1 && discoveryData && (
+                <div className="w-full mt-4 space-y-4">
+                  {/* Flights */}
+                  {discoveryData.flights?.length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 px-1">
+                      {discoveryData.flights.map((f: any, i: number) => (
+                        <motion.div 
+                          key={i} 
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: i * 0.1 }}
+                          className="flex-shrink-0 bg-white border border-black/5 rounded-xl p-3 flex items-center gap-3 shadow-sm"
+                        >
+                          <div className="p-2 bg-primary/5 text-primary rounded-lg">
+                            <Plane size={16} />
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-bold text-text-muted uppercase tracking-tight">{f.airline}</div>
+                            <div className="text-xs font-bold text-text-primary">{f.from} → {f.to}</div>
+                            <div className="text-[10px] font-medium text-secondary">{f.price} • {f.carbon} Emission</div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Hotels Carousel */}
+                  {discoveryData.hotels?.length > 0 && (
+                    <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4 px-1">
+                      {discoveryData.hotels.map((h: any, i: number) => (
+                        <motion.div 
+                          key={i} 
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                          onMouseEnter={() => setHoveredItem({
+                            type: 'hotel',
+                            name: h.name,
+                            image: h.image,
+                            location: h.region || itinerary?.trip_metadata?.region || 'Indonesia',
+                            label: 'Rekomendasi Utama'
+                          })}
+                          className="flex-shrink-0 w-[260px] md:w-[300px] bg-white rounded-[24px] border border-black/5 shadow-xl overflow-hidden group cursor-pointer hover:border-primary/30 transition-colors"
+                        >
+                          <div className="relative h-32 md:h-40 bg-gray-100">
+                             <Image src={h.image} alt={h.name} fill className="object-cover group-hover:scale-110 transition-transform duration-700" />
+                             <div className="absolute top-3 left-3 z-10 glass px-2 py-1 rounded-lg border-white/40 flex items-center gap-1">
+                               <Star size={10} className="fill-yellow-400 text-yellow-400" />
+                               <span className="text-[10px] font-bold text-text-primary">{h.rating}</span>
+                             </div>
+                             <div className="absolute top-3 right-3 z-10 bg-secondary/90 text-white text-[8px] font-black px-2 py-1 rounded-lg uppercase tracking-widest">
+                               {h.eco_badge}
+                             </div>
+                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                          </div>
+                          <div className="p-4 space-y-3">
+                             <div>
+                               <h4 className="font-bold text-text-primary group-hover:text-primary transition-colors line-clamp-1">{h.name}</h4>
+                               <div className="flex items-center gap-1 text-[10px] text-text-muted mt-0.5">
+                                 <Users size={10} />
+                                 <span>{h.reviews_count} ulasan terverifikasi</span>
+                               </div>
+                             </div>
+                             
+                             <div className="bg-light-gray p-2 rounded-xl text-[10px] italic text-text-secondary line-clamp-2 min-h-[40px]">
+                               "{h.reviews[0]}"
+                             </div>
+
+                             <div className="flex items-center justify-between pt-2 border-t border-black/5">
+                               <div>
+                                 <div className="text-[8px] font-bold text-text-muted uppercase">Mulai dari</div>
+                                 <div className="text-sm font-black text-primary">{h.price}</div>
+                               </div>
+                               <button className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary hover:text-white transition-all">
+                                 <CreditCard size={16} />
+                               </button>
+                             </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
 
@@ -157,9 +293,20 @@ function PlannerContent() {
                   </div>
                   <div className="space-y-4 ml-4 border-l-2 border-secondary/10 pl-6">
                     {day.activities.map((act: any, j: number) => (
-                      <div key={j} className="relative group">
+                      <motion.div 
+                        key={j} 
+                        whileHover={{ x: 5 }}
+                        onMouseEnter={() => setHoveredItem({
+                          type: 'activity',
+                          name: act.activity,
+                          image: '/images/generic-eco.png',
+                          location: act.location,
+                          label: `Hari ${day.day}`
+                        })}
+                        className="relative group cursor-pointer"
+                      >
                         <div className="absolute -left-[31px] top-2 w-3 h-3 rounded-full bg-white border-2 border-secondary group-hover:scale-125 transition-all" />
-                        <div className="glass p-4 rounded-2xl border-black/5 hover:border-secondary/20 transition-all cursor-pointer">
+                        <div className="glass p-4 rounded-2xl border-black/5 hover:border-secondary/20 transition-all">
                           <div className="flex justify-between items-start mb-2">
                              <span className="text-[10px] font-black text-secondary">{act.time}</span>
                              <div className="flex items-center gap-1 bg-green-50 text-[8px] font-bold text-green-700 px-2 py-0.5 rounded-full uppercase">
@@ -174,7 +321,7 @@ function PlannerContent() {
                             {act.location}
                           </div>
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
                   </div>
                 </div>
@@ -194,13 +341,47 @@ function PlannerContent() {
         </div>
 
         {/* Input Area - Hidden on mobile map view */}
-        <div className="p-4 md:p-6 bg-white border-t border-black/5 pb-24 md:pb-6">
+        <div className="p-4 md:p-6 bg-white border-t border-black/5 pb-24 md:pb-6 space-y-4">
+          {/* Suggestion Chips */}
+          <AnimatePresence>
+            {!isGenerating && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="flex gap-2 overflow-x-auto scrollbar-hide py-1"
+              >
+                {(itinerary ? [
+                  "Lebih banyak alam 🌿", 
+                  "Kurangi budget 💸", 
+                  "Aktivitas keluarga 👨‍👩‍👧‍👦", 
+                  "Ganti penginapan 🏨",
+                  "Tambah 1 hari 📅"
+                ] : [
+                  "Eco-Resort Mewah ✨", 
+                  "Homestay Lokal 🏠", 
+                  "Petualangan Alam 🌿", 
+                  "Wisata Budaya 🏛️",
+                  "Keduanya! 😍"
+                ]).map((chip) => (
+                  <button
+                    key={chip}
+                    onClick={() => handleSendMessage(chip)}
+                    className="flex-shrink-0 px-4 py-2 rounded-full bg-secondary/5 text-secondary border border-secondary/20 text-xs font-bold hover:bg-secondary hover:text-white transition-all whitespace-nowrap active:scale-95"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="relative group">
             <div className="absolute inset-0 bg-secondary/5 blur-xl group-focus-within:bg-secondary/10 transition-all rounded-2xl" />
-            <div className="relative bg-light-gray rounded-2xl p-1.5 flex items-end gap-2 border border-black/5 group-focus-within:border-secondary/30 transition-all">
+            <div className="relative bg-light-gray rounded-2xl p-1.5 flex items-end gap-2 border border-black/5 group-focus-within:border-secondary/30 transition-all shadow-inner">
               <textarea 
                 rows={1}
-                placeholder="Ada perubahan rute?"
+                placeholder={itinerary ? "Ada perubahan rute, Liora?" : "Tanya Liora tentang perjalanan Anda..."}
                 className="flex-1 bg-transparent border-none outline-none p-3 text-sm text-text-primary resize-none placeholder:text-text-muted font-medium"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
@@ -253,26 +434,38 @@ function PlannerContent() {
           </div>
         </div>
 
-        {/* Location Preview Card (Dummy) */}
-        <div className="absolute bottom-24 md:bottom-10 left-4 md:left-10 right-4 md:right-10 z-10 animate-slide-up">
-           <div className="max-w-md glass rounded-3xl md:rounded-[32px] p-1.5 border-white/50 shadow-2xl overflow-hidden flex gap-3 md:gap-4">
-              <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-2xl md:rounded-3xl overflow-hidden flex-shrink-0">
-                <Image 
-                  src="/images/ubud-resort.png" 
-                  alt="Location" 
-                  fill 
-                  className="object-cover"
-                />
-              </div>
-              <div className="py-2 md:py-4 pr-4 md:pr-6 flex flex-col justify-center">
-                <span className="text-secondary text-[8px] md:text-[10px] font-black uppercase tracking-widest mb-1">Pemberhentian 1</span>
-                <h3 className="text-base md:text-xl font-bold text-text-primary mb-0.5 md:mb-1">Ubud Eco Resort</h3>
-                <div className="flex items-center gap-2 text-[10px] md:text-xs text-text-secondary">
-                  <MapPin size={12} className="text-secondary" />
-                  Bali, Indonesia
+        {/* Floating Info Card */}
+        <div className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 z-20 w-[90%] md:w-auto">
+          <AnimatePresence mode="wait">
+            <motion.div 
+              key={hoveredItem?.name || 'default'}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-md glass rounded-3xl md:rounded-[32px] p-1.5 border-white/50 shadow-2xl overflow-hidden flex gap-3 md:gap-4"
+            >
+                <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-2xl md:rounded-3xl overflow-hidden flex-shrink-0">
+                  <Image 
+                    src={hoveredItem?.image || "/images/bali-resort.png"} 
+                    alt="Location" 
+                    fill 
+                    className="object-cover"
+                  />
                 </div>
-              </div>
-           </div>
+                <div className="py-2 md:py-4 pr-4 md:pr-6 flex flex-col justify-center">
+                  <span className="text-secondary text-[8px] md:text-[10px] font-black uppercase tracking-widest mb-1">
+                    {hoveredItem?.label || 'Destinasi'}
+                  </span>
+                  <h3 className="text-base md:text-xl font-bold text-text-primary mb-0.5 md:mb-1">
+                    {hoveredItem?.name || 'Menunggu Rencana...'}
+                  </h3>
+                  <div className="flex items-center gap-2 text-[10px] md:text-xs text-text-secondary">
+                    <MapPin size={12} className="text-secondary" />
+                    {hoveredItem?.location || 'Indonesia'}
+                  </div>
+                </div>
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 

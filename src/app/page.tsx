@@ -67,7 +67,7 @@ export default function Home() {
                 <span className="text-secondary">mau liburan ke mana</span> hari ini?
               </h1>
               <p className="text-base md:text-xl text-white/80 max-w-2xl mx-auto leading-relaxed">
-                Ceritakan gaya liburan dan anggaranmu, saya akan merancang perjalanan ramah lingkungan terbaik untukmu.
+                Ceritakan impianmu pada Liora, biarkan kurator AI kami merajut perjalanan regeneratif yang personal untuk jiwa penjelajahmu.
               </p>
             </div>
             
@@ -200,7 +200,7 @@ export default function Home() {
               <div className="max-w-xl">
                 <h2 className="text-4xl font-bold text-text-primary mb-6">Bagaimana AI Kami Bekerja?</h2>
                 <p className="text-text-secondary leading-relaxed">
-                  Algoritma canggih kami memproses ribuan data destinasi untuk mencocokkan preferensi Anda dengan pilihan yang paling ramah lingkungan.
+                  Liora, kurator AI kami, memproses ribuan data destinasi untuk mencocokkan preferensi Anda dengan pilihan yang paling ramah lingkungan melalui diskusi mendalam.
                 </p>
               </div>
 
