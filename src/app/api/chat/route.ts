@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { getEnrichedData } from "@/lib/travel-simulator";
+import { aiConfig, systemPrompts } from "@/lib/ai-config";
 
 const apiKey = process.env.GOOGLE_API_KEY;
 
@@ -10,52 +11,40 @@ if (!apiKey) {
 
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
-// System prompt untuk Liora
-const SYSTEM_PROMPT = `Anda adalah Liora, Kurator Perjalanan Regeneratif dari Ekuitraplan.ai.
-
-ATURAN:
-- Pesan 1 & 2: JANGAN kasih itinerary, tanya dulu tentang preferensi
-- Puji destino secara puitis
-- Tanya satu pertanyaan tentang preferensi (akomodasi/aktivitas)
-- Bahasa: Indonesia santai dan elegan, max 3 kalimat
-- Pakai emoji ✨ 🌿
-
-Contoh: "Ah, Kalimantan... ✨ Apakah Anda ingin eco-resort atau homestay lokal?"`;
-
-// Tool declaration untuk generate itinerary - LENGKAP
+// Tool declaration for itinerary generation
 const ITINERARY_TOOL = {
   name: "generate_regenerative_itinerary",
-  description: "Menghasilkan rencana perjalanan regeneratif lengkap dengan aktivitas harian.",
+  description: "Generate complete travel itinerary with daily activities.",
   parameters: {
     type: Type.OBJECT,
     properties: {
-      chat_response: { type: Type.STRING, description: "Respons penutup yang hangat" },
+      chat_response: { type: Type.STRING, description: "Warm closing message" },
       trip_metadata: {
         type: Type.OBJECT,
         properties: {
-          title: { type: Type.STRING, description: "Judul trip yang menarik" },
-          region: { type: Type.STRING, description: "Nama wilayah/destinasi" },
-          total_eco_score: { type: Type.NUMBER, description: "Skor eco-friendly 0-100" }
+          title: { type: Type.STRING, description: "Trip title" },
+          region: { type: Type.STRING, description: "Destination region" },
+          total_eco_score: { type: Type.NUMBER, description: "Eco score 0-100" }
         }
       },
       itinerary: {
         type: Type.ARRAY,
-        description: "Array aktivitas per hari",
+        description: "Daily itinerary array",
         items: {
           type: Type.OBJECT,
           properties: {
-            day: { type: Type.NUMBER, description: "Nomor hari (1, 2, 3...)" },
-            theme: { type: Type.STRING, description: "Tema hari ini" },
+            day: { type: Type.NUMBER, description: "Day number" },
+            theme: { type: Type.STRING, description: "Day theme" },
             activities: {
               type: Type.ARRAY,
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  time: { type: Type.STRING, description: "Jam aktivitas (09:00)" },
-                  activity: { type: Type.STRING, description: "Nama aktivitas" },
-                  location: { type: Type.STRING, description: "Lokasi" },
-                  eco_impact: { type: Type.STRING, description: "Dampak positif" },
-                  description: { type: Type.STRING, description: "Deskripsi singkat" }
+                  time: { type: Type.STRING },
+                  activity: { type: Type.STRING },
+                  location: { type: Type.STRING },
+                  eco_impact: { type: Type.STRING },
+                  description: { type: Type.STRING }
                 }
               }
             }
@@ -79,7 +68,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Format pesan tidak valid" }, { status: 400 });
     }
     
-    // Format history untuk dikirim ke model
+    // Get model config
+    const currentModel = aiConfig.getCurrentModel();
+    const modelName = aiConfig.model;
+    console.log(`Using model: ${modelName} (${currentModel.description})`);
+    
+    // Format history
     const contents = messages.map((m: any) => ({
       role: m.role === 'user' ? 'user' : 'model',
       parts: [{ text: m.content }]
@@ -87,17 +81,25 @@ export async function POST(req: Request) {
     
     const lastMessage = messages[messages.length - 1].content;
 
-    // Kirim dengan tools untuk itinerary generation
+    // Get system prompt based on model
+    const systemPrompt = currentModel.provider === "gemini" 
+      ? systemPrompts.travelPlannerMinimal 
+      : systemPrompts.travelPlanner;
+
+    // Send request
     const response = await ai.models.generateContent({
-      model: "gemma-4-26b-a4b-it",
-      contents: contents,  // Kirim semua history
+      model: modelName,
+      contents: contents,
       config: {
-        systemInstruction: SYSTEM_PROMPT,
-        tools: [{ functionDeclarations: [ITINERARY_TOOL] }]
+        systemInstruction: systemPrompt,
+        tools: [{ functionDeclarations: [ITINERARY_TOOL] }],
+        httpOptions: {
+          timeout: currentModel.timeout
+        }
       }
     });
 
-    // Parse response - cek function call dulu
+    // Parse response
     const candidates = (response as any).candidates;
     let aiText = "";
     let itineraryData = null;
@@ -105,31 +107,26 @@ export async function POST(req: Request) {
     if (candidates && candidates[0]?.content?.parts) {
       const parts = candidates[0].content.parts;
       
-      // Cek apakah ada function call
+      // Check function call
       const functionCallPart = parts.find((p: any) => p.functionCall);
       
       if (functionCallPart?.functionCall) {
         const fc = functionCallPart.functionCall;
-        console.log("Function call:", fc.name, fc.args);
+        console.log("Function call:", fc.name);
         
-        // Jika ada function call, generate itinerary data
         if (fc.name === "generate_regenerative_itinerary" && fc.args) {
           const args = typeof fc.args === 'string' ? JSON.parse(fc.args) : fc.args;
           
-          console.log("Full itinerary args:", JSON.stringify(args, null, 2));
-          
-          // Extract SEMUA field dari args
-          const region = args.trip_metadata?.region || "Kalimantan";
-          const itineraryData = {
+          const region = args.trip_metadata?.region || "Indonesia";
+          itineraryData = {
             trip_metadata: args.trip_metadata || { 
-              title: "Petualangan di Kalimantan", 
+              title: "Petualangan Seru", 
               region, 
-              total_eco_score: 85 
+              total_eco_score: 80 
             },
             itinerary: args.itinerary || []
           };
           
-          // Get enriched data
           const hotels = getEnrichedData(region, 'hotel');
           const flights = getEnrichedData(region, 'flight');
           
@@ -141,14 +138,13 @@ export async function POST(req: Request) {
         }
       }
       
-      // Kalau tidak ada function call,ambil text biasa
+      // Get text response
       const cleanParts = parts.filter((p: any) => p.thought !== true && !p.functionCall);
       aiText = cleanParts.map((p: any) => p.text).join('\n').trim();
     }
     
-    // Fallback
     if (!aiText) {
-      aiText = response.text || "Maaf, saya butuh waktu lebih lama untuk merespons. Coba lagi ya!";
+      aiText = response.text || "Maaf, saya butuh waktu lebih lama. Coba lagi ya!";
     }
 
     return NextResponse.json({ 
