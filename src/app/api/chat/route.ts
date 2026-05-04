@@ -51,6 +51,19 @@ const ITINERARY_TOOL = {
           impact: { type: Type.STRING, description: "Environmental impact description" }
         }
       },
+      recommended_activities: {
+        type: Type.ARRAY,
+        description: "Grounded eco-friendly activities list for the destination from verified sources",
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            location: { type: Type.STRING },
+            description: { type: Type.STRING },
+            eco_score: { type: Type.NUMBER, description: "Eco-friendliness score 1-100" }
+          }
+        }
+      },
       itinerary: {
         type: Type.ARRAY,
         description: "Daily itinerary array",
@@ -77,7 +90,7 @@ const ITINERARY_TOOL = {
         }
       }
     },
-    required: ["chat_response", "trip_metadata", "itinerary"]
+    required: ["chat_response", "trip_metadata", "itinerary", "recommended_activities"]
   }
 };
 
@@ -223,7 +236,8 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
               region, 
               total_eco_score: 80 
             },
-            itinerary: enrichedItinerary // Use enriched itinerary with eco data
+            itinerary: enrichedItinerary, // Use enriched itinerary with eco data
+            recommended_activities: args.recommended_activities || []
           };
 
           carbonData = carbonResult ? {
@@ -236,15 +250,19 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
           
           ecoActivityData = ecoActivity || null;
           
-          // Get enriched data
+          // Get recommended activities from AI response
+          const recommendedActivities = args.recommended_activities || [];
+          
+          // Get enriched data - use existing fromLocation for flights
           const hotels = getEnrichedData(region, 'hotel');
-          const flights = getEnrichedData(region, 'flight');
+          const flights = getEnrichedData(region, 'flight', fromLocation);
           
           return NextResponse.json({ 
             chat_response: args.chat_response || "Perjalanan Anda sudah siap! ✨",
             itinerary_data: itineraryData,
             carbon_data: carbonData,
             eco_activity: ecoActivityData,
+            recommended_activities: recommendedActivities,
             eco_comparisons: ecoComparisons,
             enriched_data: { hotels, flights }
           });

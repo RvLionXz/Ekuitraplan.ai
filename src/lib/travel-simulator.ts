@@ -1,7 +1,42 @@
 // Simulator data travel untuk Ekuitraplan
 // Mensimulasikan data dari Google Places & Amadeus API
 
-export const getEnrichedData = (location: string, type: 'hotel' | 'activity' | 'flight') => {
+// Destination aliases mapping
+const destinationAliases: Record<string, string> = {
+  'bali': 'bali',
+  'yogyakarta': 'yogyakarta',
+  'jogja': 'yogyakarta',
+  ' jakarta': 'jakarta',
+  'bandung': 'bandung',
+  'surabaya': 'surabaya',
+  'medan': 'medan',
+  'makassar': 'makassar',
+  'aceh': 'aceh',
+  'raja ampat': 'raja ampat',
+  'lombok': 'lombok',
+  'balin': 'bali'
+};
+
+export const getEnrichedData = (location: string, type: 'hotel' | 'activity' | 'flight', fromLocation?: string) => {
+  // Normalize location
+  const normalizedLocation = destinationAliases[location.toLowerCase()] || location.toLowerCase();
+  
+  // Get flights based on actual from_location
+  if (type === 'flight') {
+    const from = fromLocation || 'Jakarta';
+    const to = normalizedLocation;
+    
+    // If same location (domestic), show domestic flights
+    // Otherwise show international routes simulation
+    const flights = [
+      { airline: 'Garuda Indonesia', from: from, to: to, price: 'Rp 1.850.000', carbon: 'Low' },
+      { airline: 'AirAsia', from: from, to: to, price: 'Rp 850.000', carbon: 'Medium' },
+      { airline: 'Citilink', from: from, to: to, price: 'Rp 950.000', carbon: 'Medium' }
+    ];
+    
+    console.log(`[ travel-simulator ] Generating flights: ${from} → ${to}`);
+    return flights;
+  }
   // Database simulasi untuk destinasi populer
   const db: any = {
     'bali': {

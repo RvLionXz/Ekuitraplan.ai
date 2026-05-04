@@ -43,6 +43,8 @@ function PlannerContent() {
   const [carbonData, setCarbonData] = useState<any>(null);
   const [ecoActivity, setEcoActivity] = useState<any>(null);
   const [ecoComparisons, setEcoComparisons] = useState<any[]>([]);
+  const [recommendedActivities, setRecommendedActivities] = useState<any[]>([]);
+  const [selectedHotel, setSelectedHotel] = useState<any>(null);
 
   // Initial trigger if there's a query from landing page
   useEffect(() => {
@@ -112,6 +114,10 @@ function PlannerContent() {
       if (data.eco_comparisons) {
         setEcoComparisons(data.eco_comparisons);
       }
+
+      if (data.recommended_activities) {
+        setRecommendedActivities(data.recommended_activities);
+      }
       
       setMessages(prev => [...prev, { 
         role: 'ai', 
@@ -164,7 +170,7 @@ function PlannerContent() {
                 <Sparkles size={40} className="text-white" />
               </div>
               <div>
-                <h2 className="font-black text-xl text-text-primary">Halo, aku Liora! 👋</h2>
+                <h2 className="font-black text-xl text-text-primary">Halo, aku Arisca! 👋</h2>
                 <p className="text-sm text-text-secondary mt-1">Ceritakan rencana perjalananmu</p>
               </div>
             </div>
@@ -183,7 +189,7 @@ function PlannerContent() {
                 {msg.role === 'ai' && (
                   <div className="absolute -top-6 left-0 text-[10px] font-black text-secondary uppercase tracking-[0.2em] flex items-center gap-1.5 opacity-80">
                     <div className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
-                    Liora AI
+                    Arisca AI
                   </div>
                 )}
                 {msg.role === 'ai' ? (
@@ -209,7 +215,7 @@ function PlannerContent() {
                           initial={{ opacity: 0, scale: 0.9 }}
                           animate={{ opacity: 1, scale: 1 }}
                           transition={{ delay: i * 0.1 }}
-                          className="flex-shrink-0 bg-white border border-black/5 rounded-xl p-3 flex items-center gap-3 shadow-sm"
+                          className="flex-shrink-0 bg-white border border-black/5 rounded-xl p-3 flex items-center gap-3 premium-shadow hover:scale-105 transition-all cursor-pointer"
                         >
                           <div className="p-2 bg-primary/5 text-primary rounded-lg">
                             <Plane size={16} />
@@ -240,26 +246,28 @@ function PlannerContent() {
                             location: h.region || itinerary?.trip_metadata?.region || 'Indonesia',
                             label: 'Rekomendasi Utama'
                           })}
-                          className="flex-shrink-0 w-[260px] md:w-[300px] bg-white rounded-[24px] border border-black/10 shadow-md hover:shadow-xl overflow-hidden group cursor-pointer hover:border-primary/30 transition-all duration-300"
+                          onClick={() => setSelectedHotel(h)}
+                          className="flex-shrink-0 w-[280px] flex flex-col bg-white rounded-[32px] p-5 premium-shadow hover:scale-[1.02] transition-all group relative overflow-hidden"
                         >
-                          <div className="relative h-32 md:h-40 bg-gray-100">
-                            <Image src={h.image} alt={h.name} fill className="object-cover group-hover:scale-110 transition-transform duration-700" sizes="300px" />
-                            <div className="absolute top-3 left-3 z-10 glass px-2 py-1 rounded-lg border-white/40 flex items-center gap-1">
-                              <Star size={10} className="fill-yellow-400 text-yellow-400" />
-                              <span className="text-[10px] font-bold text-text-primary">{h.rating}</span>
-                            </div>
-                            <div className="absolute top-3 right-3 z-10 bg-secondary/90 text-white text-[8px] font-black px-2 py-1 rounded-lg uppercase tracking-widest">
+                          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors" />
+                          
+                          <div className="relative aspect-[4/3] rounded-2xl overflow-hidden mb-4 shadow-md">
+                            <img 
+                              src={h.image} 
+                              alt={h.name}
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                            />
+                            <div className="absolute top-3 right-3 px-2 py-1 bg-white/90 backdrop-blur-md rounded-lg text-[10px] font-black text-primary border border-primary/10">
                               {h.eco_badge}
                             </div>
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                           </div>
                           <div className="p-4 space-y-3">
-                            <div>
-                              <h4 className="font-bold text-text-primary group-hover:text-primary transition-colors line-clamp-1">{h.name}</h4>
-                              <div className="flex items-center gap-1 text-[10px] text-text-muted mt-0.5">
-                                <Users size={10} />
-                                <span>{h.reviews_count} ulasan terverifikasi</span>
-                              </div>
+                            <div className="min-h-[44px] flex items-start">
+                              <h4 className="font-bold text-[15px] text-text-primary group-hover:text-primary transition-colors line-clamp-2 leading-tight">{h.name}</h4>
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] text-text-muted mt-1">
+                              <Users size={10} />
+                              <span>{h.reviews_count} ulasan terverifikasi</span>
                             </div>
                             
                             <div className="bg-light-gray p-2 rounded-xl text-[10px] italic text-text-secondary line-clamp-2 min-h-[40px]">
@@ -285,120 +293,207 @@ function PlannerContent() {
             </div>
           ))}
 
-          {/* Carbon & Impact Summary Card */}
-          {carbonData && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white border border-black/5 rounded-[32px] p-6 shadow-xl relative overflow-hidden group"
-            >
-              <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform duration-700">
-                <Zap size={120} className="text-secondary" />
+          {/* Global Insights & Discovery Section */}
+          {(carbonData || ecoActivity || recommendedActivities.length > 0) && (
+            <div className="space-y-6 pt-4 border-t border-black/5 mt-6">
+              <div className="flex items-center gap-2 px-1">
+                <Sparkles size={16} className="text-primary" />
+                <h3 className="text-sm font-black text-text-primary uppercase tracking-wider">Discovery & Impact</h3>
               </div>
-              
-              <div className="relative z-10 space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center">
-                      <Waves size={16} className="text-secondary" />
-                    </div>
-                    <span className="text-xs font-black text-secondary uppercase tracking-[0.2em]">Impact Analysis</span>
+
+              {/* Carbon & Impact Summary Card */}
+              {carbonData && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white border border-black/5 rounded-[32px] p-6 premium-shadow relative overflow-hidden group"
+                >
+                  <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform duration-700">
+                    <Zap size={120} className="text-secondary" />
                   </div>
-                  <div className="px-3 py-1 bg-green-50 text-green-600 rounded-full text-[10px] font-black uppercase tracking-wider border border-green-100">
-                    Eco-Score: 92/100
+                  
+                  <div className="relative z-10 space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-secondary/10 flex items-center justify-center">
+                          <Waves size={16} className="text-secondary" />
+                        </div>
+                        <span className="text-xs font-black text-secondary uppercase tracking-[0.2em]">Carbon Analysis</span>
+                      </div>
+                      <div className="px-3 py-1 bg-green-50 text-green-600 rounded-full text-[10px] font-black uppercase tracking-wider border border-green-100">
+                        Eco-Score: 92/100
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-[9px] font-bold text-text-muted uppercase tracking-wider mb-1">Total Emisi</p>
+                        <div className="flex items-baseline gap-0.5">
+                          <span className="text-2xl font-black text-text-primary tracking-tight">{carbonData.total_emissions_kg}</span>
+                          <span className="text-[10px] font-bold text-text-secondary">kg</span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-bold text-text-muted uppercase tracking-wider mb-1">Jarak</p>
+                        <div className="flex items-baseline gap-0.5">
+                          <span className="text-2xl font-black text-text-primary tracking-tight">{(carbonData.distance_km / 1000).toFixed(1)}</span>
+                          <span className="text-[10px] font-bold text-text-secondary">k km</span>
+                        </div>
+                      </div>
+                      <div className="text-emerald-600">
+                        <p className="text-[9px] font-bold text-emerald-600/60 uppercase tracking-wider mb-1">Hemat</p>
+                        <div className="flex items-baseline gap-0.5">
+                          <span className="text-2xl font-black tracking-tight">+{carbonData.total_saved_kg || 0}</span>
+                          <span className="text-[10px] font-bold">kg</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-warm-cream/50 p-4 rounded-2xl border border-black/5">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0">
+                          <Sparkles size={20} className="text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-text-primary mb-1">Regeneration Buffer</p>
+                          <p className="text-[10px] text-text-secondary leading-relaxed">
+                            Kami merekomendasikan tambahan <span className="font-bold text-secondary">+{Math.round(carbonData.emissions_with_buffer_kg - carbonData.total_emissions_kg)}kg</span> untuk memulihkan ekosistem lokal.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* NEW: Recommended Activities (Permata Tersembunyi) */}
+              {recommendedActivities.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-6 bg-primary rounded-full" />
+                      <span className="text-[10px] font-black text-text-muted uppercase tracking-[0.2em]">Permata Tersembunyi ✨</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-primary animate-pulse">Geser →</span>
+                  </div>
+                  <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-6 -mx-1 px-1">
+                    {recommendedActivities.map((act, i) => (
+                      <motion.div 
+                        key={i}
+                        whileHover={{ y: -8, scale: 1.02 }}
+                        onMouseEnter={() => setHoveredItem({
+                          type: 'activity',
+                          name: act.name,
+                          image: '/images/eco-discovery.png',
+                          location: act.location,
+                          label: 'Rekomendasi Arisca'
+                        })}
+                        className="flex-shrink-0 w-[260px] flex flex-col bg-white/60 backdrop-blur-xl p-5 rounded-[32px] border border-white/40 premium-shadow hover:scale-[1.02] transition-all cursor-pointer group relative overflow-hidden"
+                      >
+                        <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary/5 rounded-full blur-3xl group-hover:bg-primary/10 transition-colors" />
+                        
+                        <div className="flex-1 flex flex-col relative z-10">
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center text-primary shadow-inner">
+                              <Leaf size={22} />
+                            </div>
+                            <div className="px-3 py-1.5 bg-green-50 text-green-600 rounded-full text-[10px] font-black border border-green-100 flex items-center gap-1">
+                              <Sparkles size={10} />
+                              {act.eco_score}/100
+                            </div>
+                          </div>
+                          
+                          {/* Name container with min-height for 2 lines */}
+                          <div className="min-h-[44px] mb-1 flex items-start pt-1">
+                            <h4 className="font-black text-[15px] text-text-primary group-hover:text-primary transition-colors leading-tight line-clamp-2">
+                              {act.name}
+                            </h4>
+                          </div>
+                          
+                          <div className="flex items-center gap-1.5 text-[10px] text-text-muted mb-4 font-bold tracking-tight">
+                            <MapPin size={12} className="text-secondary" />
+                            <span className="truncate">{act.location}</span>
+                          </div>
+                          
+                          {/* Description container with min-height for 2 lines */}
+                          <div className="min-h-[38px] mb-5">
+                            <p className="text-[11px] text-text-secondary leading-relaxed line-clamp-2 italic opacity-80 font-medium">
+                              "{act.description}"
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <button className="w-full py-3 bg-white/80 hover:bg-primary hover:text-white text-primary rounded-2xl text-[11px] font-black transition-all border border-primary/10 uppercase tracking-widest shadow-sm active:scale-95 flex items-center justify-center gap-2">
+                          Detail Aktivitas
+                          <ArrowLeft size={14} className="rotate-180" />
+                        </button>
+                      </motion.div>
+                    ))}
                   </div>
                 </div>
+              )}
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-[9px] font-bold text-text-muted uppercase tracking-wider mb-1">Total Emisi</p>
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="text-2xl font-black text-text-primary tracking-tight">{carbonData.total_emissions_kg}</span>
-                      <span className="text-[10px] font-bold text-text-secondary">kg</span>
-                    </div>
+              {/* Regenerative Project Card */}
+              {ecoActivity && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-[32px] p-6 text-white shadow-xl relative overflow-hidden group"
+                >
+                  <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:rotate-12 transition-transform duration-700">
+                    <TreeDeciduous size={140} />
                   </div>
-                  <div>
-                    <p className="text-[9px] font-bold text-text-muted uppercase tracking-wider mb-1">Jarak</p>
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="text-2xl font-black text-text-primary tracking-tight">{(carbonData.distance_km / 1000).toFixed(1)}</span>
-                      <span className="text-[10px] font-bold text-text-secondary">k km</span>
+                  
+                  <div className="relative z-10 space-y-6">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md">
+                        <Sparkles size={16} className="text-white" />
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Proyek Utama</span>
                     </div>
-                  </div>
-                  <div className="text-emerald-600">
-                    <p className="text-[9px] font-bold text-emerald-600/60 uppercase tracking-wider mb-1">Hemat</p>
-                    <div className="flex items-baseline gap-0.5">
-                      <span className="text-2xl font-black tracking-tight">+{carbonData.total_saved_kg || 0}</span>
-                      <span className="text-[10px] font-bold">kg</span>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="bg-warm-cream/50 p-4 rounded-2xl border border-black/5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center flex-shrink-0">
-                      <Sparkles size={20} className="text-primary" />
-                    </div>
                     <div>
-                      <p className="text-xs font-bold text-text-primary mb-1">Rekomendasi Kontribusi</p>
-                      <p className="text-[10px] text-text-secondary leading-relaxed">
-                        Kami merekomendasikan tambahan <span className="font-bold text-secondary">+{Math.round(carbonData.emissions_with_buffer_kg - carbonData.total_emissions_kg)}kg</span> sebagai "Regeneration Buffer" untuk memulihkan ekosistem lokal.
+                      <h3 className="text-2xl font-black tracking-tight mb-2">{ecoActivity.name}</h3>
+                      <div className="flex items-center gap-2 text-xs font-bold opacity-90">
+                        <MapPin size={14} />
+                        {ecoActivity.location}
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10">
+                      <p className="text-xs leading-relaxed opacity-90 italic">
+                        "{ecoActivity.description}"
                       </p>
                     </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
 
-          {/* Regenerative Project Card */}
-          {ecoActivity && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-[32px] p-6 text-white shadow-xl relative overflow-hidden group"
-            >
-              <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:rotate-12 transition-transform duration-700">
-                <TreeDeciduous size={140} />
-              </div>
-              
-              <div className="relative z-10 space-y-6">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md">
-                    <Sparkles size={16} className="text-white" />
+                    <div className="flex items-center justify-between pt-2">
+                      <div className="flex flex-col">
+                        <span className="text-[10px] font-black uppercase tracking-wider opacity-60">Estimasi Impact</span>
+                        <span className="text-sm font-black">{ecoActivity.impact}</span>
+                      </div>
+                      <button className="px-5 py-2 bg-white text-emerald-700 rounded-full text-xs font-black shadow-lg hover:scale-105 transition-transform">
+                        Kontribusi →
+                      </button>
+                    </div>
                   </div>
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Proyek Regenerasi</span>
-                </div>
-
-                <div>
-                  <h3 className="text-2xl font-black tracking-tight mb-2">{ecoActivity.name}</h3>
-                  <div className="flex items-center gap-2 text-xs font-bold opacity-90">
-                    <MapPin size={14} />
-                    {ecoActivity.location}
-                  </div>
-                </div>
-
-                <div className="p-4 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10">
-                  <p className="text-xs leading-relaxed opacity-90 italic">
-                    "{ecoActivity.description}"
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-black uppercase tracking-wider opacity-60">Estimasi Impact</span>
-                    <span className="text-sm font-black">{ecoActivity.impact}</span>
-                  </div>
-                  <button className="px-5 py-2 bg-white text-emerald-700 rounded-full text-xs font-black shadow-lg hover:scale-105 transition-transform">
-                    Kontribusi →
-                  </button>
-                </div>
-              </div>
-            </motion.div>
+                </motion.div>
+              )}
+            </div>
           )}
 
           {/* Itinerary Timeline */}
           {itinerary && (
-            <div className="space-y-8 mt-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="space-y-8 mt-12 pt-8 border-t border-black/5 animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-2">
+                  <Calendar size={18} className="text-secondary" />
+                  <h3 className="text-sm font-black text-text-primary uppercase tracking-wider">Rencana Perjalanan</h3>
+                </div>
+                <div className="text-[10px] font-bold text-text-muted bg-light-gray px-3 py-1 rounded-full">
+                  {itinerary.itinerary.length} Hari Petualangan
+                </div>
+              </div>
+              
               {itinerary.itinerary.map((day: any, i: number) => (
                 <div key={i} className="space-y-4">
                   <div className="flex items-center gap-3">
@@ -517,7 +612,7 @@ function PlannerContent() {
             <div className="relative bg-light-gray rounded-2xl p-1.5 flex items-end gap-2 border border-black/5 group-focus-within:border-secondary/30 transition-all shadow-inner">
               <textarea 
                 rows={1}
-                placeholder={itinerary ? "Ada perubahan rute, Liora?" : "Tanya Liora tentang perjalanan Anda..."}
+                placeholder={itinerary ? "Ada perubahan rute, Arisca?" : "Tanya Arisca tentang perjalanan Anda..."}
                 className="flex-1 bg-transparent border-none outline-none p-3 text-sm text-text-primary resize-none placeholder:text-text-muted font-medium"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}

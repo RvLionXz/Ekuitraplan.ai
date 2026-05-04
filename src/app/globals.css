@@ -117,6 +117,16 @@ body {
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.04);
 }
 
+.premium-shadow {
+  box-shadow: 
+    0 10px 40px -10px rgba(0, 0, 0, 0.08),
+    0 20px 50px -15px rgba(0, 0, 0, 0.05);
+}
+
+.soft-glow {
+  box-shadow: 0 0 30px rgba(0, 103, 56, 0.08);
+}
+
 .animate-fade-in {
   animation: fade-in 1s ease-out forwards;
 }

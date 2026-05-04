@@ -68,7 +68,7 @@ export default function Home() {
                 <span className="text-secondary">mau liburan ke mana</span> hari ini?
               </h1>
               <p className="text-base md:text-xl text-white/80 max-w-2xl mx-auto leading-relaxed">
-                Ceritakan impianmu pada Liora, biarkan kurator AI kami merajut perjalanan regeneratif yang personal untuk jiwa penjelajahmu.
+                Ceritakan impianmu pada Arisca, biarkan kurator AI kami merajut perjalanan regeneratif yang personal untuk jiwa penjelajahmu.
               </p>
             </div>
             
@@ -144,7 +144,7 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {destinations.map((item, i) => (
-              <div key={i} className="group relative rounded-[32px] overflow-hidden aspect-[4/5] subtle-shadow card-hover">
+              <div key={i} className="group relative rounded-[32px] overflow-hidden aspect-[4/5] premium-shadow card-hover">
                 <Image 
                   src={item.image}
                   alt={item.title}
@@ -183,7 +183,7 @@ export default function Home() {
         <div className="container mx-auto px-6">
           <div className="flex flex-col lg:flex-row items-center gap-16">
             <div className="w-full lg:w-1/3">
-              <div className="relative aspect-square rounded-[40px] overflow-hidden subtle-shadow group">
+              <div className="relative aspect-square rounded-[40px] overflow-hidden premium-shadow group">
                 <Image 
                   src="/images/rice-terrace.png"
                   alt="Kecerdasan AI"
@@ -203,7 +203,7 @@ export default function Home() {
               <div className="max-w-xl">
                 <h2 className="text-4xl font-bold text-text-primary mb-6">Bagaimana AI Kami Bekerja?</h2>
                 <p className="text-text-secondary leading-relaxed">
-                  Liora, kurator AI kami, memproses ribuan data destinasi untuk mencocokkan preferensi Anda dengan pilihan yang paling ramah lingkungan melalui diskusi mendalam.
+                  Arisca, kurator AI kami, memproses ribuan data destinasi untuk mencocokkan preferensi Anda dengan pilihan yang paling ramah lingkungan melalui diskusi mendalam.
                 </p>
               </div>
 
