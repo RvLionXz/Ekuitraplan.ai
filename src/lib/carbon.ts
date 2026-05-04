@@ -1,6 +1,10 @@
 // Carbon Service - Hitung emisi karbon dari transportasi
 // Menggunakan emissions.dev API
-// Docs: https://emissions.dev/docs/api/travel/calculate
+// DOCS: https://emissions.dev/docs/api/travel/calculate
+// 
+// NOTE: Dengan Maps Grounding enabled di route.ts,
+// Gemini akan menggunakan Maps untuk distances secara otomatis.
+// File ini berfungsi sebagai tambahan untuk emissions.dev API calls.
 
 const EMISSIONS_API_KEY = process.env.EMISSIONS_API_KEY;
 const EMISSIONS_API_URL = "https://api.emissions.dev/v1";
@@ -385,4 +389,161 @@ export async function calculateEcoComparison(
     console.error('Eco comparison error:', error);
     return null;
   }
+}
+
+// ============ TRANSPORT RECOMMENDATION LOGIC ============
+
+interface TransportRecommendation {
+  recommended: string;
+  emoji: string;
+  reason: string;
+  alternative?: string;
+}
+
+export const getRecommendedTransport = (distanceKm: number): TransportRecommendation => {
+  // Distance-based transport recommendation
+  
+  if (distanceKm <= 1) {
+    return {
+      recommended: 'jalan kaki',
+      emoji: '🚶',
+      reason: 'Dalam radius 1km, jalan kaki adalah pilihan terbaik!',
+      alternative: 'sepeda'
+    };
+  } else if (distanceKm <= 3) {
+    return {
+      recommended: 'sepeda',
+      emoji: '🚲',
+      reason: 'Dalam 3km, bersepeda lebih sehat & ramah lingkungan.',
+      alternative: 'ojek online'
+    };
+  } else if (distanceKm <= 10) {
+    return {
+      recommended: 'ojek online / scooter',
+      emoji: '🏍',
+      reason: 'Untuk jarak 3-10km, ojek online lebih efisien.',
+      alternative: 'sewa sepeda motor'
+    };
+  } else if (distanceKm <= 50) {
+    return {
+      recommended: 'sewa mobil / driver',
+      emoji: '🚗',
+      reason: 'Untuk jarak sedang, sewa mobil dengandriver lebih nyaman.',
+      alternative: 'travel berbagi'
+    };
+  } else if (distanceKm <= 150) {
+    return {
+      recommended: 'travel antar jemput',
+      emoji: '🚐',
+      reason: 'Untuk jarak 50-150km, travel antar jemput lebih hemat.',
+      alternative: 'sewa mobil'
+    };
+  } else {
+    return {
+      recommended: 'flight',
+      emoji: '✈️',
+      reason: 'Untuk jarak jauh antar pulau, flight lebih cepat.',
+      alternative: 'ferry'
+    };
+  }
+};
+
+// Validate if AI's transport choice makes sense for the given distance
+export const validateTransportChoice = (choice: string, distanceKm: number): { valid: boolean; reason?: string; suggestion?: string } => {
+  const choiceLower = choice.toLowerCase();
+  
+  // Invalid choices that don't match distance
+  if (choiceLower.includes('jalan kaki') || choiceLower.includes('walk')) {
+    if (distanceKm > 3) {
+      const rec = getRecommendedTransport(distanceKm);
+      return {
+        valid: false,
+        reason: `Jalan kaki ${distanceKm}km tidak masuk akal.`,
+        suggestion: `${rec.recommended} (${rec.emoji})`
+      };
+    }
+  }
+  
+  if (choiceLower.includes('taksi') || choiceLower.includes('taxi')) {
+    if (distanceKm > 100) {
+      const rec = getRecommendedTransport(distanceKm);
+      return {
+        valid: false,
+        reason: `Taksi jarak ${distanceKm}km terlalu mahal.`,
+        suggestion: `${rec.recommended} (${rec.emoji})`
+      };
+    }
+  }
+  
+  if (choiceLower.includes('car') && !choiceLower.includes('sewa')) {
+    // AI used "car" but meant something else - check if reasonable
+    if (distanceKm < 5 || distanceKm > 80) {
+      const rec = getRecommendedTransport(distanceKm);
+      return {
+        valid: false,
+        reason: `Pilihan transport tidak sesuai jarak ${distanceKm}km.`,
+        suggestion: `${rec.recommended} (${rec.emoji})`
+      };
+    }
+  }
+  
+  return { valid: true };
+}
+
+// ============ FALLBACK DISTANCE ESTIMATION ============
+// Used when Maps Grounding doesn't return distance
+
+interface DestinationPair {
+  from: string;
+  to: string;
+  estimatedKm: number;
+}
+
+// Rough distance estimates for common routes (fallback)
+const FALLBACK_DISTANCES: DestinationPair[] = [
+  { from: 'kuta', to: 'ubud', estimatedKm: 30 },
+  { from: 'kuta', to: 'uluwatu', estimatedKm: 25 },
+  { from: 'kuta', to: 'seminyak', estimatedKm: 8 },
+  { from: 'kuta', to: 'canggu', estimatedKm: 15 },
+  { from: 'kuta', to: 'sanur', estimatedKm: 20 },
+  { from: 'kuta', to: 'nusa dua', estimatedKm: 15 },
+  { from: 'ubud', to: 'tegallalang', estimatedKm: 8 },
+  { from: 'ubud', to: 'prambanan', estimatedKm: 35 },
+  { from: 'ubud', to: 'borobudur', estimatedKm: 45 },
+  { from: 'denpasar', to: 'badung', estimatedKm: 10 },
+  { from: 'jakarta', to: 'bandung', estimatedKm: 150 },
+  { from: 'jakarta', to: 'bogor', estimatedKm: 60 },
+  { from: 'jakarta', to: 'bali', estimatedKm: 2500 }, // flight
+  { from: 'surabaya', to: 'malang', estimatedKm: 90 },
+];
+
+/**
+ * Fallback distance estimation - used when Maps Grounding fails
+ * This is a ROUGH estimate only!
+ */
+export function getEstimatedDistance(from: string, to: string): number | null {
+  const fromNorm = from.toLowerCase();
+  const toNorm = to.toLowerCase();
+  
+  // Direct match
+  for (const pair of FALLBACK_DISTANCES) {
+    if ((fromNorm.includes(pair.from) || pair.from.includes(fromNorm)) &&
+        (toNorm.includes(pair.to) || pair.to.includes(toNorm))) {
+      console.warn(`[carbon] Using fallback distance ${pair.estimatedKm}km for ${from} → ${to}`);
+      return pair.estimatedKm;
+    }
+  }
+  
+  // Check reverse
+  for (const pair of FALLBACK_DISTANCES) {
+    if ((fromNorm.includes(pair.to) || pair.to.includes(fromNorm)) &&
+        (toNorm.includes(pair.from) || pair.from.includes(toNorm))) {
+      console.warn(`[carbon] Using fallback distance ${pair.estimatedKm}km for ${from} → ${to} (reverse)`);
+      return pair.estimatedKm;
+    }
+  }
+  
+  // Default - return null so caller can handle
+  console.warn(`[carbon] No fallback distance for ${from} → ${to}`);
+  return null;
 }

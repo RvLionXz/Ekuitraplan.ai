@@ -1,5 +1,7 @@
 // Simulator data travel untuk Ekuitraplan
-// Mensimulasikan data dari Google Places & Amadeus API
+// NOTE: Dengan Maps Grounding yang enabled di route.ts,
+// data hotel/restaurant sudah diambil dari Google Maps.
+// File ini sekarang berfungsi sebagai FALLBACK jika Maps Grounding tidak tersedia.
 
 // Destination aliases mapping
 const destinationAliases: Record<string, string> = {

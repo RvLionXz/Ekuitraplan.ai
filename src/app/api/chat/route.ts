@@ -4,6 +4,7 @@ import { getEnrichedData } from "@/lib/travel-simulator";
 import { aiConfig, systemPrompts } from "@/lib/ai-config";
 import { calculateRoundTripCarbonEmissions, calculateEcoComparison, formatCarbonDisplay } from "@/lib/carbon";
 import { getEcoActivitySuggestion, formatEcoActivityDisplay } from "@/lib/eco-activity";
+import { getCoordinates, parseLocationFromText, createDebugInfo, extractMapsDistance, extractMapsPlaces } from "@/lib/maps-helper";
 
 const apiKey = process.env.GOOGLE_API_KEY;
 
@@ -123,14 +124,102 @@ export async function POST(req: Request) {
     const systemPrompt = currentModel.provider === "gemini" 
       ? systemPrompts.travelPlannerMinimal 
       : systemPrompts.travelPlanner;
-
-    // Send request with tool
+    
+    // Parse location from user input for Maps context
+    const locationContext = parseLocationFromText(lastMessage);
+    const coordinates = getCoordinates(locationContext);
+    
+    console.log(`[maps] Location detected: ${locationContext}`, { coordinates });
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 1: Maps Grounding Call (separate, text-only)
+    // We call the model with ONLY googleMaps tool to force
+    // grounded place search. No function calling here.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    let mapsContext = "";
+    let groundingChunks: any[] = [];
+    
+    if (coordinates) {
+      try {
+        console.log("[maps] Step 1: Fetching Maps grounding data...");
+        
+        const mapsPrompt = `Berikan informasi tentang tempat wisata, restoran, dan aktivitas menarik di ${locationContext}. Fokus pada tempat yang eco-friendly dan berkelanjutan. Sertakan nama tempat, lokasi, dan deskripsi singkat.`;
+        
+        const mapsResponse = await ai.models.generateContent({
+          model: modelName,
+          contents: [{ role: "user", parts: [{ text: mapsPrompt }] }],
+          config: {
+            tools: [{ googleMaps: {} }],
+            httpOptions: { timeout: 30000 }
+          }
+        });
+        
+        // Extract grounding metadata from Maps-only call
+        const mapsCandidates = (mapsResponse as any).candidates;
+        const mapsGrounding = mapsCandidates?.[0]?.groundingMetadata;
+        
+        console.log("[maps] Step 1 candidate keys:", Object.keys(mapsCandidates?.[0] || {}));
+        
+        if (mapsGrounding) {
+          groundingChunks = mapsGrounding?.groundingChunks || [];
+          console.log("[maps] ✅ Step 1 grounding found:", {
+            chunks: groundingChunks.length,
+            supports: mapsGrounding?.groundingSupports?.length || 0,
+            widgetToken: mapsGrounding?.googleMapsWidgetContextToken ? "present" : "none"
+          });
+          
+          if (groundingChunks.length > 0) {
+            console.log("[maps] Sample chunks:", JSON.stringify(groundingChunks.slice(0, 3), null, 2));
+          }
+          
+          // Extract Maps text to use as context for Step 2
+          const mapsText = mapsCandidates?.[0]?.content?.parts
+            ?.filter((p: any) => p.text && p.thought !== true)
+            ?.map((p: any) => p.text)
+            ?.join("\n") || "";
+          
+          if (mapsText) {
+            mapsContext = `\n\n[DATA TEMPAT DARI GOOGLE MAPS]:\n${mapsText}\n`;
+            console.log("[maps] ✅ Maps context extracted:", mapsContext.length, "chars");
+          }
+        } else {
+          console.log("[maps] ⚠ Step 1: No grounding metadata returned");
+          // Still try to get text response
+          const mapsText = mapsResponse.text || "";
+          if (mapsText) {
+            mapsContext = `\n\n[REFERENSI TEMPAT]:\n${mapsText}\n`;
+            console.log("[maps] Using text fallback from Maps call:", mapsText.length, "chars");
+          }
+        }
+      } catch (mapsError) {
+        console.error("[maps] Step 1 Maps call failed (non-fatal):", mapsError);
+        // Continue without Maps data - non-fatal error
+      }
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // STEP 2: Function Calling (with Maps context injected)
+    // Now call the model with function declarations only,
+    // injecting Maps data as part of the system prompt.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    console.log("[maps] Step 2: Generating itinerary with function calling...");
+    
+    const enrichedSystemPrompt = mapsContext 
+      ? `${systemPrompt}\n\nGunakan data tempat berikut untuk membuat rekomendasi yang akurat dan berbasis data nyata:${mapsContext}`
+      : systemPrompt;
+    
     const response = await ai.models.generateContent({
       model: modelName,
       contents: contents,
       config: {
-        systemInstruction: systemPrompt,
+        systemInstruction: enrichedSystemPrompt,
         tools: [{ functionDeclarations: [ITINERARY_TOOL] }],
+        toolConfig: {
+          functionCallingConfig: {
+            mode: "ANY" as any,
+            allowedFunctionNames: ["generate_regenerative_itinerary"]
+          }
+        },
         httpOptions: {
           timeout: currentModel.timeout
         }
@@ -150,13 +239,19 @@ export async function POST(req: Request) {
       // Check function call
       const functionCallPart = parts.find((p: any) => p.functionCall);
       
+      console.log("[step2] Parts types:", JSON.stringify(parts.map((p: any) => Object.keys(p))));
+      
       if (functionCallPart?.functionCall) {
         const fc = functionCallPart.functionCall;
         console.log("Function call detected:", fc.name);
         
+        // Use Maps grounding data from Step 1
+        const mapsPlaces = extractMapsPlaces({ groundingChunks } as any);
+        console.log("[maps] Grounded places from Step 1:", mapsPlaces.length);
+        
         if (fc.name === "generate_regenerative_itinerary" && fc.args) {
           const args = typeof fc.args === 'string' ? JSON.parse(fc.args) : fc.args;
-console.log("Full itinerary args:", JSON.stringify(args, null, 2));
+          console.log("Full itinerary args:", JSON.stringify(args, null, 2));
           
           // Extract data from AI response
           const region = args.trip_metadata?.region || "Indonesia";
@@ -172,17 +267,15 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
           console.log("Eco activity:", ecoActivity);
 
           // Calculate eco comparison for activities with transport info
-          // Increase limit to provide more insights
           const allActivities = args.itinerary?.flatMap((day: any) => 
             (day.activities || []).map((act: any) => ({ ...act, day: day.day }))
           ) || [];
           
           const activitiesWithTransport = allActivities
             .filter((act: any) => act.transport && act.location)
-            .slice(0, 8); // Process up to 8 activities total
+            .slice(0, 8);
           
           const ecoComparisons: any[] = [];
-          // Map to store comparison by activity index for reliable matching
           const comparisonMap = new Map<string, any>();
           
           for (const act of activitiesWithTransport) {
@@ -200,7 +293,6 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
                 ...comparison
               };
               ecoComparisons.push(ecoData);
-              // Create a unique key for matching
               comparisonMap.set(`${act.day}-${act.activity}`, ecoData);
             }
           }
@@ -221,8 +313,6 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
               };
             })
           })) || [];
-          
-          console.log("Eco comparisons:", ecoComparisons);
 
           // Calculate total carbon saved
           const totalSavedKg = ecoComparisons.reduce((sum, item) => sum + (item.saved_carbon_kg || 0), 0);
@@ -236,7 +326,7 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
               region, 
               total_eco_score: 80 
             },
-            itinerary: enrichedItinerary, // Use enriched itinerary with eco data
+            itinerary: enrichedItinerary,
             recommended_activities: args.recommended_activities || []
           };
 
@@ -264,7 +354,8 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
             eco_activity: ecoActivityData,
             recommended_activities: recommendedActivities,
             eco_comparisons: ecoComparisons,
-            enriched_data: { hotels, flights }
+            enriched_data: { hotels, flights },
+            maps_grounded: groundingChunks.length > 0
           });
         }
       }

@@ -1,5 +1,7 @@
-// Eco Activity Service - Cari eco activity via Search Grounding
-// Menggunakan Google Search Grounding untuk finding eco activities di lokasi tujuan
+// Eco Activity Service
+// NOTE: Dengan Maps Grounding yang enabled,
+// aktiviti eco-friendly sekarang diambil dari Google Maps.
+// File ini berfungsi sebagai FALLBACK.
 
 interface EcoActivity {
   name: string;
