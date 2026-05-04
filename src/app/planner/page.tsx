@@ -434,29 +434,24 @@ function PlannerContent() {
                           <h4 className="font-bold text-sm text-text-primary mb-1">{act.activity}</h4>
                           <p className="text-xs text-text-secondary leading-relaxed line-clamp-2">{act.description}</p>
                           
-                          {/* Eco Comparison Badge */}
-                          {act.transport && ecoComparisons?.length > 0 && (() => {
-                            const comparison = ecoComparisons.find(c => 
-                              c.activity === act.activity
-                            ) || ecoComparisons.find(c => c.transport === act.transport);
-                            
-                            return comparison && comparison.saved_carbon_kg > 0 ? (
-                              <motion.div 
-                                initial={{ opacity: 0, scale: 0.9 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                className="mt-3"
-                              >
-                                <div className="flex items-center gap-3 bg-gradient-to-r from-green-50 to-emerald-50 p-2.5 rounded-xl border border-green-100 shadow-sm">
-                                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-sm">
-                                    🍃
-                                  </div>
-                                  <span className="text-[11px] font-bold text-green-700 leading-tight">
-                                    {comparison.message}
-                                  </span>
+                          {/* Eco Comparison Badge - use directly attached eco_message */}
+                          {act.eco_message && act.eco_saved_kg > 0 && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.1 }}
+                              className="mt-3"
+                            >
+                              <div className="flex items-center gap-3 bg-gradient-to-r from-green-50 to-emerald-50 p-2.5 rounded-xl border border-green-100 shadow-sm">
+                                <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-sm">
+                                  🍃
                                 </div>
-                              </motion.div>
-                            ) : null;
-                          })()}
+                                <span className="text-[11px] font-bold text-green-700 leading-tight">
+                                  {act.eco_message}
+                                </span>
+                              </div>
+                            </motion.div>
+                          )}
                           
                           <div className="flex items-center gap-1 mt-2 text-[10px] font-bold text-text-muted">
                             <MapPin size={10} />

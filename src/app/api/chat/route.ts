@@ -169,6 +169,9 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
             .slice(0, 8); // Process up to 8 activities total
           
           const ecoComparisons: any[] = [];
+          // Map to store comparison by activity index for reliable matching
+          const comparisonMap = new Map<string, any>();
+          
           for (const act of activitiesWithTransport) {
             const comparison = await calculateEcoComparison(
               region, 
@@ -177,14 +180,34 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
               1
             );
             if (comparison) {
-              ecoComparisons.push({
+              const ecoData = {
                 activity: act.activity,
                 transport: act.transport,
                 day: act.day,
                 ...comparison
-              });
+              };
+              ecoComparisons.push(ecoData);
+              // Create a unique key for matching
+              comparisonMap.set(`${act.day}-${act.activity}`, ecoData);
             }
           }
+          
+          console.log("Eco comparisons:", ecoComparisons);
+          
+          // Build enriched itinerary with eco data attached to each activity
+          const enrichedItinerary = args.itinerary?.map((day: any) => ({
+            ...day,
+            activities: (day.activities || []).map((act: any) => {
+              const key = `${day.day}-${act.activity}`;
+              const ecoData = comparisonMap.get(key);
+              return {
+                ...act,
+                eco_comparison: ecoData || null,
+                eco_saved_kg: ecoData?.saved_carbon_kg || 0,
+                eco_message: ecoData?.message || null
+              };
+            })
+          })) || [];
           
           console.log("Eco comparisons:", ecoComparisons);
 
@@ -200,7 +223,7 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
               region, 
               total_eco_score: 80 
             },
-            itinerary: args.itinerary || []
+            itinerary: enrichedItinerary // Use enriched itinerary with eco data
           };
 
           carbonData = carbonResult ? {
