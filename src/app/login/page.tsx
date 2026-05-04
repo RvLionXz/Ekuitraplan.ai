@@ -18,6 +18,7 @@ export default function LoginPage() {
           alt="Indonesia Rice Terrace"
           fill
           className="object-cover"
+          sizes="100vw"
           priority
         />
         <div className="absolute inset-0 bg-gradient-to-tr from-primary/80 via-primary/40 to-transparent" />

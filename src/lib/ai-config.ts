@@ -58,10 +58,17 @@ SAAT INFO LENGKAP, PAKAI TOOL generate_regenerative_itinerary DENGAN:
 - itinerary: array hari dengan activities
 - chat_response: pesan penutup
 
+PENTING - DETAIL ACTIVITY:
+- Setiap activity WAJIB ada field "transport" yang menunjukkan transportasi yang digunakan:
+  -Contoh: "transport": "MRT/LRT", "transport": "jalan kaki", "transport": "taksi"
+- Jika activity涉及交通 (pindah lokasi), wajibcantumkan transportasinya
+-ini untuk hitung eco comparison (hemat CO2 dibanding taksi)
+
 CATATAN:
 - from_location: kota asal user (bukan destination) untuk hitung carbon
 - region: tujuan utama perjalanan
 - carbon dan eco activity akan dihitungotomatis oleh server
+- eco_comparison akan dihitung untuk activity yang menggunakan transportasi umum
 
 ATURAN:
 - Bahasa Indonesia, max 3 kalimat
@@ -77,8 +84,5 @@ CONTOH:
 Tugas: buat rencana perjalanan. Tanya kalau info kurang.
 WAKTU THINKING: Minimal. Max 3 kalimat.
 
-SAAT INFO LENGKAP → call generate_regenerative_itinerary dengan:
-- trip_metadata: { title, region, from_location, eco_score }
-- itinerary: array hari
-- chat_response: pesan penutup`
+PENTING: Setiap activity wajib cantumkan "transport" (MRT, jalan kaki, taksi, bus, dll) untuk hitung eco comparison.`
 };

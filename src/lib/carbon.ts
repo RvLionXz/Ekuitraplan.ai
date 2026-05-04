@@ -208,3 +208,181 @@ export function formatCarbonDisplay(carbonKg: number): string {
   }
   return `${(carbonKg / 1000).toFixed(1)} ton CO2`;
 }
+
+// Transport mode emoji mapping
+export const TRANSPORT_ICONS: Record<string, string> = {
+  rail: "🚇",
+  bus: "🚌",
+  car: "🚗",
+  taxi: "🚕",
+  walk: "🚶",
+  ferry: "⛴️",
+  flight: "✈️"
+};
+
+/**
+ * Map various transport mode strings (including Indonesian) to valid API modes
+ */
+function mapTransportMode(mode: string): 'flight' | 'rail' | 'car' | 'bus' | 'ferry' | 'taxi' | 'walk' {
+  const m = mode.toLowerCase().trim();
+  
+  // Walking
+  if (m.includes('jalan') || m.includes('walk') || m.includes('kaki')) return 'walk';
+  
+  // Rail/Public Transport
+  if (
+    m.includes('mrt') || 
+    m.includes('lrt') || 
+    m.includes('kereta') || 
+    m.includes('rail') || 
+    m.includes('train') || 
+    m.includes('krl') ||
+    m.includes('commuter')
+  ) return 'rail';
+  
+  // Bus
+  if (m.includes('bus') || m.includes('transjakarta') || m.includes('angkot')) return 'bus';
+  
+  // Taxi/Ride-sharing
+  if (m.includes('taksi') || m.includes('taxi') || m.includes('grab') || m.includes('gojek') || m.includes('ojek')) return 'taxi';
+  
+  // Car
+  if (m.includes('mobil') || m.includes('car') || m.includes('pribadi')) return 'car';
+  
+  // Ferry
+  if (m.includes('kapal') || m.includes('ferry') || m.includes('laut')) return 'ferry';
+  
+  // Flight
+  if (m.includes('pesawat') || m.includes('flight') || m.includes('udara')) return 'flight';
+
+  return 'car'; // Fallback
+}
+
+/**
+ * Calculate eco comparison - compare actual transport vs taxi
+ * Returns CO2 saved by choosing eco-friendly transport
+ */
+export async function calculateEcoComparison(
+  from: string,
+  to: string,
+  actualMode: string,
+  passengers: number = 1
+): Promise<{
+  actual_carbon_kg: number;
+  taxi_carbon_kg: number;
+  saved_carbon_kg: number;
+  distance_km: number;
+  actual_mode: string;
+  message: string;
+} | null> {
+  if (!EMISSIONS_API_KEY) {
+    console.warn("EMISSIONS_API_KEY not configured");
+    return null;
+  }
+
+  // Normalize transport mode
+  const mode = mapTransportMode(actualMode);
+  
+  try {
+    const originCountry = getCountryCode(from);
+    const destCountry = getCountryCode(to);
+
+    // If it's walking, we only need to calculate the baseline (taxi)
+    const taxiParams = new URLSearchParams({
+      origin_country: originCountry,
+      origin_location: from,
+      destination_country: destCountry,
+      destination_location: to,
+      transport_mode: 'taxi',
+      passengers: passengers.toString(),
+      return_trip: 'false'
+    });
+
+    if (mode === 'walk') {
+      const taxiRes = await fetch(`${EMISSIONS_API_URL}/travel/emissions?${taxiParams}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${EMISSIONS_API_KEY}` }
+      });
+
+      if (!taxiRes.ok) return null;
+      const taxiData = await taxiRes.json();
+      const taxiEmissions = taxiData?.data?.attributes?.emissions?.co2e || 0;
+      const distance = taxiData?.data?.attributes?.route?.total_distance_km || 0;
+
+      return {
+        actual_carbon_kg: 0,
+        taxi_carbon_kg: taxiEmissions,
+        saved_carbon_kg: Math.round(taxiEmissions * 10) / 10,
+        distance_km: distance,
+        actual_mode: 'walk',
+        message: taxiEmissions > 0 
+          ? `Jalan kaki menyelamatkan ${Math.round(taxiEmissions * 10) / 10}kg CO₂ dibanding taksi! 🌿` 
+          : 'Pilihan yang sangat ramah lingkungan! ✨'
+      };
+    }
+
+    // For other modes, calculate both
+    const actualParams = new URLSearchParams({
+      origin_country: originCountry,
+      origin_location: from,
+      destination_country: destCountry,
+      destination_location: to,
+      transport_mode: mode === 'flight' ? 'flight' : mode, // Ensure valid API mode
+      passengers: passengers.toString(),
+      return_trip: 'false'
+    });
+
+    // Make both requests in parallel
+    const [actualRes, taxiRes] = await Promise.all([
+      fetch(`${EMISSIONS_API_URL}/travel/emissions?${actualParams}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${EMISSIONS_API_KEY}` }
+      }),
+      fetch(`${EMISSIONS_API_URL}/travel/emissions?${taxiParams}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${EMISSIONS_API_KEY}` }
+      })
+    ]);
+
+    if (!actualRes.ok || !taxiRes.ok) {
+      console.error('Eco comparison API error:', actualRes.status, taxiRes.status);
+      return null;
+    }
+
+    const actualData = await actualRes.json();
+    const taxiData = await taxiRes.json();
+
+    const actualEmissions = actualData?.data?.attributes?.emissions?.co2e || 0;
+    const taxiEmissions = taxiData?.data?.attributes?.emissions?.co2e || 0;
+    const distance = actualData?.data?.attributes?.route?.total_distance_km || 0;
+
+    // Calculate savings
+    const saved = Math.max(0, taxiEmissions - actualEmissions);
+    
+    // Generate message based on mode and savings
+    let message = '';
+    if (mode === 'rail' || mode === 'bus') {
+      message = saved > 0.1 
+        ? `Naik transportasi umum hemat ${saved.toFixed(1)}kg CO₂! 🚌`
+        : 'Transportasi umum pilihan cerdas & hijau! ✨';
+    } else if (saved > 0.1) {
+      message = `Kamu menghemat ${saved.toFixed(1)}kg CO₂ dengan pilihan ini! 🌿`;
+    } else {
+      message = 'Pilihan transportasi Anda sudah baik! ✨';
+    }
+
+    console.log('Eco comparison result:', { mode, actualEmissions, taxiEmissions, saved, distance });
+
+    return {
+      actual_carbon_kg: actualEmissions,
+      taxi_carbon_kg: taxiEmissions,
+      saved_carbon_kg: Math.round(saved * 10) / 10,
+      distance_km: distance,
+      actual_mode: mode,
+      message
+    };
+  } catch (error) {
+    console.error('Eco comparison error:', error);
+    return null;
+  }
+}

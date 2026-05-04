@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { getEnrichedData } from "@/lib/travel-simulator";
 import { aiConfig, systemPrompts } from "@/lib/ai-config";
-import { calculateRoundTripCarbonEmissions, formatCarbonDisplay } from "@/lib/carbon";
+import { calculateRoundTripCarbonEmissions, calculateEcoComparison, formatCarbonDisplay } from "@/lib/carbon";
 import { getEcoActivitySuggestion, formatEcoActivityDisplay } from "@/lib/eco-activity";
 
 const apiKey = process.env.GOOGLE_API_KEY;
@@ -67,6 +67,7 @@ const ITINERARY_TOOL = {
                   time: { type: Type.STRING },
                   activity: { type: Type.STRING },
                   location: { type: Type.STRING },
+                  transport: { type: Type.STRING, description: "Transport mode: MRT, jalankaki, taksi, bus, car" },
                   eco_impact: { type: Type.STRING },
                   description: { type: Type.STRING }
                 }
@@ -157,6 +158,41 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
           console.log("Carbon result:", carbonResult);
           console.log("Eco activity:", ecoActivity);
 
+          // Calculate eco comparison for activities with transport info
+          // Increase limit to provide more insights
+          const allActivities = args.itinerary?.flatMap((day: any) => 
+            (day.activities || []).map((act: any) => ({ ...act, day: day.day }))
+          ) || [];
+          
+          const activitiesWithTransport = allActivities
+            .filter((act: any) => act.transport && act.location)
+            .slice(0, 8); // Process up to 8 activities total
+          
+          const ecoComparisons: any[] = [];
+          for (const act of activitiesWithTransport) {
+            const comparison = await calculateEcoComparison(
+              region, 
+              act.location,
+              act.transport,
+              1
+            );
+            if (comparison) {
+              ecoComparisons.push({
+                activity: act.activity,
+                transport: act.transport,
+                day: act.day,
+                ...comparison
+              });
+            }
+          }
+          
+          console.log("Eco comparisons:", ecoComparisons);
+
+          // Calculate total carbon saved
+          const totalSavedKg = ecoComparisons.reduce((sum, item) => sum + (item.saved_carbon_kg || 0), 0);
+          
+          console.log("Total saved carbon:", totalSavedKg);
+
           // Build response
           itineraryData = {
             trip_metadata: args.trip_metadata || { 
@@ -170,6 +206,7 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
           carbonData = carbonResult ? {
             total_emissions_kg: carbonResult.total_kg,
             emissions_with_buffer_kg: carbonResult.with_buffer,
+            total_saved_kg: Math.round(totalSavedKg * 10) / 10,
             transport_type: "flight",
             distance_km: carbonResult.distance_km || 0
           } : null;
@@ -185,6 +222,7 @@ console.log("Full itinerary args:", JSON.stringify(args, null, 2));
             itinerary_data: itineraryData,
             carbon_data: carbonData,
             eco_activity: ecoActivityData,
+            eco_comparisons: ecoComparisons,
             enriched_data: { hotels, flights }
           });
         }

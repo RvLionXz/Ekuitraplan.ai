@@ -52,6 +52,7 @@ export default function Home() {
             alt="Aerial view of tropical coastline"
             fill
             className="object-cover scale-105"
+            sizes="100vw"
             priority
           />
           {/* Centralized focused overlay */}
@@ -149,6 +150,7 @@ export default function Home() {
                   alt={item.title}
                   fill
                   className="object-cover transition-transform duration-700 group-hover:scale-110"
+                  sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/20 to-transparent" />
                 
@@ -187,6 +189,7 @@ export default function Home() {
                   alt="Kecerdasan AI"
                   fill
                   className="object-cover transition-transform duration-1000 group-hover:scale-110"
+                  sizes="(max-width: 1024px) 100vw, 33vw"
                 />
                 <div className="absolute inset-0 bg-primary/10 group-hover:bg-primary/5 transition-all" />
                 <div className="absolute bottom-8 left-8 right-8 glass p-6 rounded-3xl border-white/30 translate-y-2 group-hover:translate-y-0 transition-all">
