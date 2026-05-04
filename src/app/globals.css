@@ -129,4 +129,11 @@ body {
   .glass-panel {
     @apply bg-white/15 backdrop-blur-xl border border-white/30 shadow-2xl;
   }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }

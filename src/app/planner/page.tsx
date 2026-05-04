@@ -37,6 +37,8 @@ function PlannerContent() {
   const [itinerary, setItinerary] = useState<any>(null);
   const [discoveryData, setDiscoveryData] = useState<any>(null);
   const [hoveredItem, setHoveredItem] = useState<any>(null);
+  const [carbonData, setCarbonData] = useState<any>(null);
+  const [ecoActivity, setEcoActivity] = useState<any>(null);
 
   // Initial trigger if there's a query from landing page
   useEffect(() => {
@@ -62,7 +64,7 @@ function PlannerContent() {
         name: firstAct.activity,
         image: '/images/generic-eco.png',
         location: firstAct.location,
-        label: 'Pemberhentian 1'
+        label: 'Hari 1'
       });
     }
   }, [discoveryData, itinerary]);
@@ -91,8 +93,16 @@ function PlannerContent() {
         setItinerary(data.itinerary_data);
       }
       
+      if (data.carbon_data) {
+        setCarbonData(data.carbon_data);
+      }
+      
       if (data.enriched_data) {
         setDiscoveryData(data.enriched_data);
+      }
+      
+      if (data.eco_activity) {
+        setEcoActivity(data.eco_activity);
       }
       
       setMessages(prev => [...prev, { 
@@ -121,60 +131,47 @@ function PlannerContent() {
           <div className="flex items-center gap-3 md:gap-4">
             <button 
               onClick={() => router.push('/')}
-              className="p-2 hover:bg-light-gray rounded-full transition-all text-text-secondary"
+              className="p-2 hover:bg-black/5 rounded-xl transition-colors"
             >
-              <ArrowLeft size={18} />
+              <ArrowLeft size={20} className="text-text-primary" />
             </button>
             <div>
-              <h1 className="font-bold text-text-primary text-sm md:text-base flex items-center gap-2">
-                {itinerary?.trip_metadata?.title || "Konsultasi dengan Liora"}
-                {!itinerary && <Sparkles size={14} className="text-secondary animate-pulse" />}
-              </h1>
-              <div className="flex items-center gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-widest text-secondary">
-                <Leaf size={10} />
-                {itinerary?.trip_metadata?.region || "Kurator Perjalanan Regeneratif"}
-              </div>
+              <h1 className="font-black text-lg text-primary">Ekuitraplan.ai</h1>
+              <p className="text-xs text-text-muted font-medium">AI Travel Planner</p>
             </div>
           </div>
-          <div className="bg-secondary/10 text-secondary px-3 py-1 rounded-full text-[10px] font-bold border border-secondary/20">
-            Skor: {itinerary?.trip_metadata?.total_eco_score || "--"}
-          </div>
+          <button 
+            onClick={() => setActiveTab(activeTab === 'chat' ? 'map' : 'chat')}
+            className="p-2 hover:bg-black/5 rounded-xl transition-colors lg:hidden"
+          >
+            {activeTab === 'chat' ? <MapIcon size={20} /> : <Sparkles size={20} />}
+          </button>
         </div>
 
-        {/* Chat / Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 md:space-y-8 scrollbar-hide pb-24 md:pb-6">
-          {messages.length === 0 && !isGenerating && (
-            <div className="h-full flex flex-col items-center justify-center text-center space-y-6 py-12">
-              <div className="relative">
-                <div className="w-20 h-20 rounded-full bg-secondary/10 flex items-center justify-center text-secondary">
-                  <Sparkles size={40} />
-                </div>
-                <div className="absolute -bottom-2 -right-2 bg-primary text-white p-1.5 rounded-lg shadow-lg">
-                  <Waves size={16} />
-                </div>
+        {/* Chat Messages & Itinerary */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 pb-32 md:pb-6">
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-60">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
+                <Sparkles size={40} className="text-white" />
               </div>
-              <div className="space-y-2">
-                <h2 className="text-lg font-black text-text-primary">Halo! Saya Liora ✨</h2>
-                <p className="text-xs font-medium text-text-muted max-w-[280px] leading-relaxed">
-                  Siap merancang perjalanan yang tidak hanya berkesan, tapi juga bermakna bagi bumi? Ceritakan destinasi impian Anda.
-                </p>
+              <div>
+                <h2 className="font-black text-xl text-text-primary">Halo, aku Liora! 👋</h2>
+                <p className="text-sm text-text-secondary mt-1">Ceritakan rencana perjalananmu</p>
               </div>
             </div>
           )}
 
           {messages.map((msg, idx) => (
-            <div 
-              key={idx} 
-              className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2`}
-            >
+            <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} w-full`}>
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`max-w-[90%] md:max-w-[85%] p-3 md:p-4 rounded-2xl text-sm relative ${
-                msg.role === 'user' 
-                  ? 'bg-primary text-white shadow-lg rounded-tr-none' 
-                  : 'bg-light-gray text-text-primary border border-black/5 rounded-tl-none'
-              }`}>
+                className={`max-w-[90%] md:max-w-[85%] p-3 md:p-4 rounded-2xl text-sm relative break-words overflow-hidden ${
+                  msg.role === 'user' 
+                    ? 'bg-primary text-white shadow-lg rounded-tr-none' 
+                    : 'bg-light-gray text-text-primary border border-black/5 rounded-tl-none'
+                }`}>
                 {msg.role === 'ai' && (
                   <div className="absolute -top-6 left-0 text-[10px] font-black text-secondary uppercase tracking-widest flex items-center gap-1">
                     <Sparkles size={10} />
@@ -182,7 +179,7 @@ function PlannerContent() {
                   </div>
                 )}
                 {msg.role === 'ai' ? (
-                  <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-strong:text-secondary prose-strong:font-black">
+                  <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-strong:text-secondary prose-strong:font-black w-full break-words">
                     <ReactMarkdown>
                       {msg.content}
                     </ReactMarkdown>
@@ -221,7 +218,7 @@ function PlannerContent() {
 
                   {/* Hotels Carousel */}
                   {discoveryData.hotels?.length > 0 && (
-                    <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4 px-1">
+                    <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-6 px-1">
                       {discoveryData.hotels.map((h: any, i: number) => (
                         <motion.div 
                           key={i} 
@@ -235,41 +232,41 @@ function PlannerContent() {
                             location: h.region || itinerary?.trip_metadata?.region || 'Indonesia',
                             label: 'Rekomendasi Utama'
                           })}
-                          className="flex-shrink-0 w-[260px] md:w-[300px] bg-white rounded-[24px] border border-black/5 shadow-xl overflow-hidden group cursor-pointer hover:border-primary/30 transition-colors"
+                          className="flex-shrink-0 w-[260px] md:w-[300px] bg-white rounded-[24px] border border-black/10 shadow-md hover:shadow-xl overflow-hidden group cursor-pointer hover:border-primary/30 transition-all duration-300"
                         >
                           <div className="relative h-32 md:h-40 bg-gray-100">
-                             <Image src={h.image} alt={h.name} fill className="object-cover group-hover:scale-110 transition-transform duration-700" />
-                             <div className="absolute top-3 left-3 z-10 glass px-2 py-1 rounded-lg border-white/40 flex items-center gap-1">
-                               <Star size={10} className="fill-yellow-400 text-yellow-400" />
-                               <span className="text-[10px] font-bold text-text-primary">{h.rating}</span>
-                             </div>
-                             <div className="absolute top-3 right-3 z-10 bg-secondary/90 text-white text-[8px] font-black px-2 py-1 rounded-lg uppercase tracking-widest">
-                               {h.eco_badge}
-                             </div>
-                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                            <Image src={h.image} alt={h.name} fill className="object-cover group-hover:scale-110 transition-transform duration-700" sizes="300px" />
+                            <div className="absolute top-3 left-3 z-10 glass px-2 py-1 rounded-lg border-white/40 flex items-center gap-1">
+                              <Star size={10} className="fill-yellow-400 text-yellow-400" />
+                              <span className="text-[10px] font-bold text-text-primary">{h.rating}</span>
+                            </div>
+                            <div className="absolute top-3 right-3 z-10 bg-secondary/90 text-white text-[8px] font-black px-2 py-1 rounded-lg uppercase tracking-widest">
+                              {h.eco_badge}
+                            </div>
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                           </div>
                           <div className="p-4 space-y-3">
-                             <div>
-                               <h4 className="font-bold text-text-primary group-hover:text-primary transition-colors line-clamp-1">{h.name}</h4>
-                               <div className="flex items-center gap-1 text-[10px] text-text-muted mt-0.5">
-                                 <Users size={10} />
-                                 <span>{h.reviews_count} ulasan terverifikasi</span>
-                               </div>
-                             </div>
-                             
-                             <div className="bg-light-gray p-2 rounded-xl text-[10px] italic text-text-secondary line-clamp-2 min-h-[40px]">
-                               "{h.reviews[0]}"
-                             </div>
+                            <div>
+                              <h4 className="font-bold text-text-primary group-hover:text-primary transition-colors line-clamp-1">{h.name}</h4>
+                              <div className="flex items-center gap-1 text-[10px] text-text-muted mt-0.5">
+                                <Users size={10} />
+                                <span>{h.reviews_count} ulasan terverifikasi</span>
+                              </div>
+                            </div>
+                            
+                            <div className="bg-light-gray p-2 rounded-xl text-[10px] italic text-text-secondary line-clamp-2 min-h-[40px]">
+                              "{h.reviews[0]}"
+                            </div>
 
-                             <div className="flex items-center justify-between pt-2 border-t border-black/5">
-                               <div>
-                                 <div className="text-[8px] font-bold text-text-muted uppercase">Mulai dari</div>
-                                 <div className="text-sm font-black text-primary">{h.price}</div>
-                               </div>
-                               <button className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary hover:text-white transition-all">
-                                 <CreditCard size={16} />
-                               </button>
-                             </div>
+                            <div className="flex items-center justify-between pt-2 border-t border-black/5">
+                              <div>
+                                <div className="text-[8px] font-bold text-text-muted uppercase">Mulai dari</div>
+                                <div className="text-sm font-black text-primary">{h.price}</div>
+                              </div>
+                              <button className="bg-primary/10 text-primary p-2 rounded-lg hover:bg-primary hover:text-white transition-all">
+                                <CreditCard size={16} />
+                              </button>
+                            </div>
                           </div>
                         </motion.div>
                       ))}
@@ -280,7 +277,66 @@ function PlannerContent() {
             </div>
           ))}
 
-          {/* Render Itinerary Timeline if available */}
+          {/* Carbon Badge */}
+          {carbonData && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-gradient-to-r from-red-50 to-orange-50 p-4 rounded-2xl border border-red-100"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+                    <Plane size={20} className="text-red-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-red-600 uppercase">Emisi Karbon</p>
+                    <p className="text-lg font-bold text-text-primary">{carbonData.total_emissions_kg} kg CO₂</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-text-muted">{carbonData.distance_km} km</p>
+                  <p className="text-xs font-medium text-green-600">+{Math.round(carbonData.emissions_with_buffer_kg - carbonData.total_emissions_kg)} kg (buffer)</p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Eco Activity Card - Different design from itinerary */}
+          {ecoActivity && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-2xl border-2 border-green-200 shadow-lg"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <Leaf size={24} className="text-green-600" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-black text-green-600 uppercase bg-green-100 px-2 py-0.5 rounded-full">
+                      Eco Activity
+                    </span>
+                    <span className="text-[10px] font-bold text-green-700 uppercase bg-green-200 px-2 py-0.5 rounded-full">
+                      {ecoActivity.type}
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-base text-green-800">{ecoActivity.name}</h4>
+                  <p className="text-xs text-green-700 mt-1">{ecoActivity.description}</p>
+                  <div className="flex items-center gap-2 mt-2 text-[10px] font-medium text-green-600">
+                    <MapPin size={12} />
+                    {ecoActivity.location}
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-green-200">
+                    <p className="text-xs font-bold text-green-800">💡 {ecoActivity.impact}</p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Itinerary Timeline */}
           {itinerary && (
             <div className="space-y-8 mt-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
               {itinerary.itinerary.map((day: any, i: number) => (
@@ -306,13 +362,13 @@ function PlannerContent() {
                         className="relative group cursor-pointer"
                       >
                         <div className="absolute -left-[31px] top-2 w-3 h-3 rounded-full bg-white border-2 border-secondary group-hover:scale-125 transition-all" />
-                        <div className="glass p-4 rounded-2xl border-black/5 hover:border-secondary/20 transition-all">
+                        <div className="glass-heavy p-4 rounded-2xl border-black/5 hover:border-secondary/20 transition-all shadow-sm">
                           <div className="flex justify-between items-start mb-2">
-                             <span className="text-[10px] font-black text-secondary">{act.time}</span>
-                             <div className="flex items-center gap-1 bg-green-50 text-[8px] font-bold text-green-700 px-2 py-0.5 rounded-full uppercase">
-                               <Leaf size={8} />
-                               {act.eco_impact}
-                             </div>
+                            <span className="text-[10px] font-black text-secondary">{act.time}</span>
+                            <div className="flex items-center gap-1 bg-green-50 text-[8px] font-bold text-green-700 px-2 py-0.5 rounded-full uppercase">
+                              <Leaf size={8} />
+                              {act.eco_impact}
+                            </div>
                           </div>
                           <h4 className="font-bold text-sm text-text-primary mb-1">{act.activity}</h4>
                           <p className="text-xs text-text-secondary leading-relaxed line-clamp-2">{act.description}</p>
@@ -340,9 +396,8 @@ function PlannerContent() {
           )}
         </div>
 
-        {/* Input Area - Hidden on mobile map view */}
+        {/* Input Area */}
         <div className="p-4 md:p-6 bg-white border-t border-black/5 pb-24 md:pb-6 space-y-4">
-          {/* Suggestion Chips */}
           <AnimatePresence>
             {!isGenerating && (
               <motion.div 
@@ -404,91 +459,77 @@ function PlannerContent() {
         </div>
       </div>
 
-      {/* Right Panel: Interactive Map (Fluid) */}
+      {/* Right Panel: Interactive Map */}
       <div className={`flex-1 relative bg-light-gray transition-all ${
         activeTab === 'map' ? 'flex' : 'hidden lg:flex'
       }`}>
-        {/* Map Header Overlay */}
-        <div className="absolute top-4 md:top-6 left-4 md:left-6 right-4 md:right-6 z-10 flex justify-between items-start pointer-events-none">
-          <div className="flex flex-col gap-2 pointer-events-auto">
-             <div className="glass px-3 py-1.5 rounded-xl border-white/40 flex items-center gap-2 shadow-xl">
-               <div className="w-2.5 h-2.5 bg-secondary rounded-full animate-pulse" />
-               <span className="text-[10px] font-bold text-text-primary uppercase tracking-tight">Rute Eco</span>
-             </div>
-          </div>
-          
-          <div className="flex flex-col gap-2 md:gap-3 pointer-events-auto">
-            {[MapIcon, Layers, Info].map((Icon, i) => (
-              <button key={i} className="w-10 h-10 md:w-12 md:h-12 glass rounded-xl md:rounded-2xl flex items-center justify-center text-text-primary hover:bg-white transition-all shadow-xl border-white/40">
-                <Icon size={18} />
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Map Placeholder */}
-        <div className="absolute inset-0 bg-deep-forest/5 flex items-center justify-center">
-          <div className="text-center space-y-3 opacity-20">
-             <MapIcon size={60} className="mx-auto" />
-             <p className="font-bold uppercase tracking-[0.2em] text-xs">Peta Interaktif</p>
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-warm-cream to-light-gray overflow-hidden">
+          {!hoveredItem && (
+            <div className="text-center space-y-4 opacity-40">
+              <MapIcon size={64} className="mx-auto text-text-muted" />
+              <p className="text-text-muted font-medium">Peta interaktif akan muncul di sini</p>
+              <p className="text-xs text-text-muted mt-2">Klik aktivitas untuk melihat detail</p>
+            </div>
+          )}
+          
+          {/* Decorative Map Elements */}
+          <div className="absolute inset-0 pointer-events-none opacity-20">
+             <div className="absolute top-1/4 left-1/3 w-2 h-2 bg-primary rounded-full animate-pulse" />
+             <div className="absolute top-1/2 left-2/3 w-2 h-2 bg-secondary rounded-full animate-pulse [animation-delay:0.5s]" />
+             <div className="absolute top-2/3 left-1/4 w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:1s]" />
           </div>
         </div>
 
-        {/* Floating Info Card */}
-        <div className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 z-20 w-[90%] md:w-auto">
+        {/* Floating Info Card (Yesterday's Style) */}
+        <div className="absolute bottom-10 md:bottom-16 left-1/2 -translate-x-1/2 z-30 w-[92%] md:w-auto max-w-[95%]">
           <AnimatePresence mode="wait">
-            <motion.div 
-              key={hoveredItem?.name || 'default'}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="max-w-md glass rounded-3xl md:rounded-[32px] p-1.5 border-white/50 shadow-2xl overflow-hidden flex gap-3 md:gap-4"
-            >
-                <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-2xl md:rounded-3xl overflow-hidden flex-shrink-0">
+            {hoveredItem && (
+              <motion.div 
+                key={hoveredItem.name}
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                className="max-w-xl glass-heavy rounded-3xl md:rounded-[40px] p-2 md:p-3 border-white/50 shadow-[0_20px_50px_rgba(0,0,0,0.3)] overflow-hidden flex gap-4 items-center"
+              >
+                <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-2xl md:rounded-[32px] overflow-hidden flex-shrink-0">
                   <Image 
-                    src={hoveredItem?.image || "/images/bali-resort.png"} 
-                    alt="Location" 
+                    src={hoveredItem.image || '/images/generic-eco.png'} 
+                    alt={hoveredItem.name} 
                     fill 
                     className="object-cover"
+                    sizes="150px"
                   />
                 </div>
-                <div className="py-2 md:py-4 pr-4 md:pr-6 flex flex-col justify-center">
-                  <span className="text-secondary text-[8px] md:text-[10px] font-black uppercase tracking-widest mb-1">
-                    {hoveredItem?.label || 'Destinasi'}
-                  </span>
-                  <h3 className="text-base md:text-xl font-bold text-text-primary mb-0.5 md:mb-1">
-                    {hoveredItem?.name || 'Menunggu Rencana...'}
-                  </h3>
-                  <div className="flex items-center gap-2 text-[10px] md:text-xs text-text-secondary">
-                    <MapPin size={12} className="text-secondary" />
-                    {hoveredItem?.location || 'Indonesia'}
+                
+                <div className="flex-1 pr-4 md:pr-8 py-2 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[9px] font-black text-secondary uppercase tracking-[0.2em]">{hoveredItem.label}</span>
+                    <div className="w-1 h-1 rounded-full bg-secondary/30" />
+                    <div className="flex items-center gap-1">
+                      <Star size={10} className="fill-yellow-400 text-yellow-400" />
+                      <span className="text-[10px] font-bold text-text-primary">4.9</span>
+                    </div>
+                  </div>
+                  <h3 className="font-black text-lg md:text-xl text-text-primary leading-tight mb-1">{hoveredItem.name}</h3>
+                  <div className="flex items-center gap-1 text-text-secondary">
+                    <MapPin size={12} className="text-primary" />
+                    <span className="text-xs font-medium">{hoveredItem.location}</span>
+                  </div>
+                  
+                  <div className="flex gap-2 mt-4">
+                    <button className="flex-1 bg-primary text-white py-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider hover:bg-secondary transition-all shadow-lg active:scale-95">
+                      Details
+                    </button>
+                    <button className="px-4 bg-white/50 backdrop-blur-md text-primary py-2.5 rounded-xl font-black text-[10px] uppercase tracking-wider border border-primary/20 hover:bg-white transition-all active:scale-95">
+                      Book
+                    </button>
                   </div>
                 </div>
-            </motion.div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
-      </div>
-
-      {/* Mobile Tab Navigation */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/80 backdrop-blur-xl border-t border-black/5 p-4 flex justify-around items-center">
-        <button 
-          onClick={() => setActiveTab('chat')}
-          className={`flex flex-col items-center gap-1 transition-all ${
-            activeTab === 'chat' ? 'text-primary' : 'text-text-muted'
-          }`}
-        >
-          <Sparkles size={20} className={activeTab === 'chat' ? 'fill-current' : ''} />
-          <span className="text-[10px] font-bold uppercase tracking-widest">Rencana</span>
-        </button>
-        <button 
-          onClick={() => setActiveTab('map')}
-          className={`flex flex-col items-center gap-1 transition-all ${
-            activeTab === 'map' ? 'text-primary' : 'text-text-muted'
-          }`}
-        >
-          <MapIcon size={20} className={activeTab === 'map' ? 'fill-current' : ''} />
-          <span className="text-[10px] font-bold uppercase tracking-widest">Peta</span>
-        </button>
       </div>
     </main>
   );
@@ -497,8 +538,11 @@ function PlannerContent() {
 export default function PlannerPage() {
   return (
     <Suspense fallback={
-      <div className="h-screen w-full flex items-center justify-center bg-warm-cream">
-        <div className="w-12 h-12 border-4 border-secondary border-t-transparent rounded-full animate-spin" />
+      <div className="h-screen flex items-center justify-center bg-warm-cream">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-text-muted mt-4 font-medium">Memuat...</p>
+        </div>
       </div>
     }>
       <PlannerContent />
