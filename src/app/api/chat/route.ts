@@ -253,6 +253,23 @@ export async function POST(req: Request) {
           const args = typeof fc.args === 'string' ? JSON.parse(fc.args) : fc.args;
           console.log("Full itinerary args:", JSON.stringify(args, null, 2));
           
+          const hasItinerary = Array.isArray(args.itinerary) && args.itinerary.length > 0;
+          
+          // If the model is just asking for more info and hasn't generated an itinerary yet
+          if (!hasItinerary) {
+            console.log("No itinerary generated yet. Returning chat response only.");
+            return NextResponse.json({ 
+              chat_response: args.chat_response || "Silakan berikan detail tambahan untuk perjalanan Anda.",
+              itinerary_data: null,
+              carbon_data: null,
+              eco_activity: null,
+              enriched_data: null,
+              recommended_activities: [],
+              eco_comparisons: [],
+              maps_grounded: groundingChunks.length > 0
+            });
+          }
+
           // Extract data from AI response
           const region = args.trip_metadata?.region || "Indonesia";
           const fromLocation = args.trip_metadata?.from_location || "Jakarta";

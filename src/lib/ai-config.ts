@@ -14,7 +14,7 @@ export const aiConfig = {
   // - "gemma-4-26b-a4b-it" (gemma 4 - needs @google/genai SDK)
   
   // Current active model - change this in .env
-  model: process.env.AI_MODEL || "gemini-2.5-flash",
+  model: process.env.AI_MODEL || "gemini-3.1-flash-lite-preview",
   
   // Model-specific settings
   models: {
