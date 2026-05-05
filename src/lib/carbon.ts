@@ -153,6 +153,25 @@ export async function calculateFlightCarbonEmissions(
 
     const emissions = attrs.emissions || {};
     const route = attrs.route || {};
+    
+    // Check for invalid data - emissions.dev failed to resolve location correctly
+    const resolvedOrigin = route?.origin?.resolved || "";
+    const resolvedDest = route?.destination?.resolved || "";
+    const distance = route.total_distance_km || 0;
+    
+    // Invalid if: 0 distance OR origin resolved to Jakarta (wrong location)
+    const isInvalid = distance === 0 || 
+      (resolvedOrigin && !resolvedOrigin.includes(from) && !resolvedOrigin.includes("Aceh")) ||
+      (resolvedDest && !resolvedDest.includes(to.replace(", Indonesia", "").split(",")[0]) && !resolvedDest.includes("Aceh"));
+    
+    if (isInvalid) {
+      console.log("[carbon] Invalid emissions.dev data, will use fallback");
+      return {
+        carbon_kg: 0,
+        distance_km: 0,
+        per_passenger_kg: 0
+      };
+    }
 
     return {
       carbon_kg: emissions.co2e || 0,
@@ -227,7 +246,7 @@ export const TRANSPORT_ICONS: Record<string, string> = {
 /**
  * Map various transport mode strings (including Indonesian) to valid API modes
  */
-function mapTransportMode(mode: string): 'flight' | 'rail' | 'car' | 'bus' | 'ferry' | 'taxi' | 'walk' {
+function mapTransportMode(mode: string): 'flight' | 'rail' | 'car' | 'bus' | 'ferry' | 'taxi' | 'walk' | 'ojek'{
   const m = mode.toLowerCase().trim();
   
   // Walking
@@ -260,6 +279,172 @@ function mapTransportMode(mode: string): 'flight' | 'rail' | 'car' | 'bus' | 'fe
   if (m.includes('pesawat') || m.includes('flight') || m.includes('udara')) return 'flight';
 
   return 'car'; // Fallback
+}
+
+// =============== DEFAULT EMISSION FACTORS FOR LOCAL TRANSPORT =================
+
+// kg CO2 per passenger-km (approximate values for Indonesia)
+// Based on typical vehicle emission factors
+// Updated: comprehensive mapping for all transport types
+const LOCAL_EMISSION_FACTORS: Record<string, number> = {
+  // Two-wheelers
+  ojek: 0.20,          // Motorbike (ojek) - high emissions
+  ojet: 0.20,          // ojet variant
+  motor: 0.20,         // motorcycle
+  'sepeda motor': 0.20,  // motorbike
+  
+  // Cars
+  taxi: 0.15,           // Taxi/ride-share
+  taksi: 0.15,          // Taxi
+  car: 0.15,           // Private car
+  mobil: 0.15,         // Car
+  'sewa mobil': 0.12,    // Rental car (more efficient)
+  'self drive': 0.12,   // Self-drive
+  'private drive': 0.15,
+  
+  // Walking
+  walk: 0,               // Walking - zero emissions
+  'jalan kaki': 0,        // Jalan kaki
+  'berjalan kaki': 0,
+  
+  // Water transport
+  ferry: 0.08,         // Ferry
+  ferri: 0.08,
+  kapal: 0.10,          // Ship/boat
+  perahu: 0.10,         // Traditional boat
+  'perahu kecil': 0.10, // Small boat
+  boat: 0.10,
+  
+  // Flight (long-haul - handled separately)
+  flight: 0.20,         // Flight (long distance)
+  pesawat: 0.20,
+  udara: 0.20,
+  
+  // Bus
+  bus: 0.10,
+  umum: 0.10,
+};
+
+/**
+ * Parse transport string - handle combos like "Sewa mobil/jalan kaki"
+ * Returns the most eco-friendly option (lowest emission)
+ */
+function parseTransportMode(transport: string): string {
+  if (!transport) return 'car';
+  
+  const t = transport.toLowerCase().trim();
+  
+  // Handle combo strings - take first or most eco-friendly
+  const parts = t.split(/[\/]/).map(p => p.trim());
+  
+  // Priority: walk > ferry > bus > boat > ojek > taxi > car > flight
+  for (const part of parts) {
+    if (part.includes('jalan') || part.includes('walk')) return 'walk';
+    if (part.includes('ferry') || part.includes('kapal') || part.includes('perahu')) return 'boat';
+    if (part.includes('bus') || part.includes('umum')) return 'bus';
+    if (part.includes('ojek') || part.includes('motor')) return 'ojek';
+    if (part.includes('taxi') || part.includes('taksi')) return 'taxi';
+    if (part.includes('mobil') || part.includes('car') || part.includes('sewa')) return 'car';
+    if (part.includes('flight') || part.includes('pesawat')) return 'flight';
+  }
+  
+  // Default: return first part
+  return parts[0] || 'car';
+}
+
+// Default distance estimates per activity type (km)
+const LOCAL_DISTANCE_ESTIMATES: Record<string, number> = {
+  // Short local trips
+  'check-in': 5,
+  'checkin': 5,
+  ' snorkeling': 3,
+  'snorkeling': 3,
+  'diving': 5,
+  'sunset': 5,
+  'pantai': 3,
+  'beach': 3,
+  'museum': 2,
+  'tugu': 3,
+  // Medium trips
+  'trekking': 8,
+  'hutan': 10,
+  'air terjun': 8,
+  'waterfall': 8,
+  // Long trips (unlikely for local)
+  'default': 5
+};
+
+/**
+ * Estimate local emissions for in-destination travel
+ * Uses default factors instead of API calls (faster, no external dependencies)
+ */
+export function estimateLocalEmissions(
+  transport: string,
+  activityLocation?: string,
+  activityName?: string
+): {
+  actual_carbon_kg: number;
+  taxi_carbon_kg: number;
+  saved_carbon_kg: number;
+  distance_km: number;
+  actual_mode: string;
+  message: string;
+} {
+  // Use new parseTransportMode to handle combos
+  const mode = parseTransportMode(transport);
+  
+  // Determine distance based on activity
+  let distanceKm = 5; // default
+  const activityLower = (activityName || activityLocation || '').toLowerCase();
+  
+  // Check for long-distance travel (flights)
+  const isFlight = mode === 'flight' || 
+    (transport?.toLowerCase().includes('flight') || transport?.toLowerCase().includes('pesawat'));
+  
+  if (isFlight && activityLower.includes('penerbangan')) {
+    // Long-haul flight - use actual distance from carbon_data or estimate
+    distanceKm = 150; // Assume ~150km for short domestic flight
+  }
+  
+  for (const [key, dist] of Object.entries(LOCAL_DISTANCE_ESTIMATES)) {
+    if (activityLower.includes(key)) {
+      distanceKm = dist;
+      break;
+    }
+  }
+  
+  // Get emission factor
+  const factor = LOCAL_EMISSION_FACTORS[mode] ?? 0.15;
+  const actualEmissions = Number((distanceKm * factor).toFixed(2));
+  const taxiEmissions = Number((distanceKm * 0.15).toFixed(2)); // taxi baseline
+  
+  // Calculate savings (if actual is better than taxi)
+  const saved = actualEmissions < taxiEmissions 
+    ? Number((taxiEmissions - actualEmissions).toFixed(2))
+    : 0;
+  
+  // Generate message
+  let message = '';
+  if (mode === 'walk') {
+    message = 'Jalan kaki - nol emisi! 🌿';
+  } else if (isFlight) {
+    message = 'Penerbangan jarak jauh - pertimbangkan carbon offset! ✈️';
+  } else if (saved > 0.5) {
+    message = `Kamu menghemat ${saved}kg CO₂ dengan pilihan ini! 🌿`;
+  } else if (mode === 'ojek' || mode === 'taxi') {
+    message = 'Opsi transportasi lokal yang umum 👍';
+  } else {
+    message = 'Pilihan yang schon! ✨';
+  }
+  
+  return {
+    actual_carbon_kg: actualEmissions,
+    taxi_carbon_kg: taxiEmissions,
+    saved_carbon_kg: saved,
+    distance_km: distanceKm,
+    actual_mode: mode,
+    message
+  };
 }
 
 /**

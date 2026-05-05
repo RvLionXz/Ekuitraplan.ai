@@ -2,9 +2,9 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
 import { getEnrichedData } from "@/lib/travel-simulator";
 import { aiConfig, systemPrompts } from "@/lib/ai-config";
-import { calculateRoundTripCarbonEmissions, calculateEcoComparison, formatCarbonDisplay } from "@/lib/carbon";
+import { calculateRoundTripCarbonEmissions, calculateEcoComparison, formatCarbonDisplay, estimateLocalEmissions } from "@/lib/carbon";
 import { getEcoActivitySuggestion, formatEcoActivityDisplay } from "@/lib/eco-activity";
-import { getCoordinates, parseLocationFromText, createDebugInfo, extractMapsDistance, extractMapsPlaces, extractDurationFromText } from "@/lib/maps-helper";
+import { createDebugInfo, extractMapsDistance, extractMapsPlaces, extractDurationFromText } from "@/lib/maps-helper";
 
 const apiKey = process.env.GOOGLE_API_KEY;
 
@@ -126,28 +126,26 @@ export async function POST(req: Request) {
       ? systemPrompts.travelPlannerMinimal 
       : systemPrompts.travelPlanner;
     
-    // Parse location from user input for Maps context
-    const locationContext = parseLocationFromText(lastMessage);
-    const coordinates = getCoordinates(locationContext);
+    // Use user input directly for Maps context - trust AI to understand destination
+    // No regex parsing needed - Maps Grounding will handle location via AI
+    const locationContext = lastMessage;
     
     // Extract duration from user input
     const durationDays = extractDurationFromText(lastMessage);
     console.log(`[duration] Extracted duration: ${durationDays} days`);
     
-    console.log(`[maps] Location detected: ${locationContext}`, { coordinates });
+    console.log(`[maps] Using user input directly: ${locationContext.substring(0, 50)}...`);
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // STEP 1: Maps Grounding Call (separate, text-only)
     // We call the model with ONLY googleMaps tool to force
-    // grounded place search. No function calling here.
+    // grounded place search. No regex or coordinates needed.
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     let mapsContext = "";
     let groundingChunks: any[] = [];
     
-    if (coordinates) {
+    if (locationContext && locationContext.length > 3) {
       try {
-        console.log("[maps] Step 1: Fetching Maps grounding data...");
-        
         const mapsPrompt = `Berikan informasi tentang tempat wisata, restoran, dan aktivitas menarik di ${locationContext}. Fokus pada tempat yang eco-friendly dan berkelanjutan. Sertakan nama tempat, lokasi, dan deskripsi singkat.`;
         
         const mapsResponse = await ai.models.generateContent({
@@ -285,7 +283,29 @@ export async function POST(req: Request) {
           const fromLocation = args.trip_metadata?.from_location || "Jakarta";
           
           // Calculate carbon using emissions.dev API
-          const carbonResult = await calculateRoundTripCarbonEmissions(fromLocation, region, 2);
+          let carbonResult = await calculateRoundTripCarbonEmissions(fromLocation, region, 2);
+          
+          // Fallback to AI's carbon_data if emissions.dev failed (invalid location/0 distance)
+          const aiCarbon = args.carbon_data;
+          if (!carbonResult || carbonResult.total_kg === 0 || carbonResult.distance_km === 0) {
+            console.log("[carbon] Using AI's carbon_data as fallback");
+            carbonResult = {
+              outbound: { 
+                carbon_kg: aiCarbon?.total_emissions_kg ? Math.round(aiCarbon.total_emissions_kg / 2) : 0,
+                distance_km: aiCarbon?.distance_km || 0,
+                per_passenger_kg: aiCarbon?.total_emissions_kg ? Math.round(aiCarbon.total_emissions_kg / 2) : 0
+              },
+              return_: { 
+                carbon_kg: aiCarbon?.total_emissions_kg ? Math.round(aiCarbon.total_emissions_kg / 2) : 0,
+                distance_km: aiCarbon?.distance_km || 0,
+                per_passenger_kg: aiCarbon?.total_emissions_kg ? Math.round(aiCarbon.total_emissions_kg / 2) : 0
+              },
+              total_kg: aiCarbon?.total_emissions_kg || 0,
+              distance_km: (aiCarbon?.distance_km || 0) * 2,
+              per_passenger_kg: aiCarbon?.total_emissions_kg || 0,
+              with_buffer: Math.round((aiCarbon?.emissions_with_buffer_kg || 0))
+            };
+          }
           
           // Get eco activity suggestion (async)
           const ecoActivity = await getEcoActivitySuggestion(region);
@@ -303,35 +323,39 @@ export async function POST(req: Request) {
             .slice(0, 8);
           
           const ecoComparisons: any[] = [];
-          const comparisonMap = new Map<string, any>();
           
           for (const act of activitiesWithTransport) {
-            const comparison = await calculateEcoComparison(
-              region, 
-              act.location,
+            // Use default local estimation instead of API call
+            // This avoids the broken emissions.dev lookup for local destinations
+            const comparison = estimateLocalEmissions(
               act.transport,
-              1
+              act.location,
+              act.activity
             );
-            if (comparison) {
-              const ecoData = {
-                activity: act.activity,
-                transport: act.transport,
-                day: act.day,
-                ...comparison
-              };
-              ecoComparisons.push(ecoData);
-              comparisonMap.set(`${act.day}-${act.activity}`, ecoData);
-            }
+            
+            const ecoData = {
+              activity: act.activity,
+              transport: act.transport,
+              day: act.day,
+              ...comparison
+            };
+            ecoComparisons.push(ecoData);
           }
           
           console.log("Eco comparisons:", ecoComparisons);
           
           // Build enriched itinerary with eco data attached to each activity
+          // Create lookup from ecoComparisons array
+          const ecoLookup: Record<string, any> = {};
+          for (const eco of ecoComparisons) {
+            ecoLookup[`${eco.day}-${eco.activity}`] = eco;
+          }
+          
           const enrichedItinerary = args.itinerary?.map((day: any) => ({
             ...day,
             activities: (day.activities || []).map((act: any) => {
               const key = `${day.day}-${act.activity}`;
-              const ecoData = comparisonMap.get(key);
+              const ecoData = ecoLookup[key];
               return {
                 ...act,
                 eco_comparison: ecoData || null,
