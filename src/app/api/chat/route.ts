@@ -5,6 +5,7 @@ import { aiConfig, systemPrompts } from "@/lib/ai-config";
 import { calculateRoundTripCarbonEmissions, calculateEcoComparison, formatCarbonDisplay, estimateLocalEmissions } from "@/lib/carbon";
 import { getEcoActivitySuggestion, formatEcoActivityDisplay } from "@/lib/eco-activity";
 import { createDebugInfo, extractMapsDistance, extractMapsPlaces, extractDurationFromText } from "@/lib/maps-helper";
+import { getPreviousTripMetadata, saveTripMetadata, isRevisionTrip, type TripMetadata } from "@/lib/session-helper";
 
 const apiKey = process.env.GOOGLE_API_KEY;
 
@@ -13,6 +14,55 @@ if (!apiKey) {
 }
 
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+// ═══════════════════════════════════════════════════════════
+// RETRY HELPER - Handle rate limits and temporary errors
+// ═══════════════════════════════════════════════════════════
+
+interface RetryableError extends Error {
+  code?: number;
+  status?: number;
+}
+
+async function fetchWithRetry<T>(
+  operation: string,
+  fetcher: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 2000
+): Promise<T> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fetcher();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Check if retryable error (503, 429, rate limit)
+      const isRetryable = error?.code === 503 || 
+        error?.status === 503 ||
+        error?.code === 429 ||
+        error?.status === 429 ||
+        (error?.message && error.message.includes('high demand'));
+      
+      if (!isRetryable) {
+        // Non-retryable error, throw immediately
+        throw error;
+      }
+      
+      // Exponential backoff
+      const delay = baseDelay * Math.pow(2, attempt);
+      console.log(`[retry] ${operation} failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms...`, error.message?.substring(0, 50));
+      
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  // All retries exhausted
+  throw lastError;
+}
 
 // Tool declaration for COMPLETE itinerary generation (itinerary + carbon + eco)
 const ITINERARY_TOOL = {
@@ -92,7 +142,7 @@ const ITINERARY_TOOL = {
         }
       }
     },
-    required: ["chat_response", "trip_metadata", "itinerary", "recommended_activities"]
+    required: ["chat_response", "trip_metadata", "itinerary", "carbon_data", "recommended_activities"]
   }
 };
 
@@ -121,6 +171,14 @@ export async function POST(req: Request) {
     
     const lastMessage = messages[messages.length - 1].content;
 
+    // ═══════════════════════════════════════════════════════════
+    // REVISION DETECTION - Load previous trip metadata
+    // ═══════════════════════════════════════════════════════════
+    // For now, use simple heuristic (messages count > 1 = likely revision)
+    // In production, load from database using userId
+    const isLikelyRevision = messages.length > 1;
+    const previousTrip = null; // Would load from DB in production: await getPreviousTripMetadata(userId)
+    
     // Get system prompt based on model
     const systemPrompt = currentModel.provider === "gemini" 
       ? systemPrompts.travelPlannerMinimal 
@@ -148,14 +206,18 @@ export async function POST(req: Request) {
       try {
         const mapsPrompt = `Berikan informasi tentang tempat wisata, restoran, dan aktivitas menarik di ${locationContext}. Fokus pada tempat yang eco-friendly dan berkelanjutan. Sertakan nama tempat, lokasi, dan deskripsi singkat.`;
         
-        const mapsResponse = await ai.models.generateContent({
-          model: modelName,
-          contents: [{ role: "user", parts: [{ text: mapsPrompt }] }],
-          config: {
-            tools: [{ googleMaps: {} }],
-            httpOptions: { timeout: 30000 }
-          }
-        });
+        // Use retry for Maps grounding call (might hit rate limits)
+        const mapsResponse = await fetchWithRetry(
+          "Maps grounding (Step 1)",
+          () => ai.models.generateContent({
+            model: modelName,
+            contents: [{ role: "user", parts: [{ text: mapsPrompt }] }],
+            config: {
+              tools: [{ googleMaps: {} }],
+              httpOptions: { timeout: 30000 }
+            }
+          })
+        );
         
         // Extract grounding metadata from Maps-only call
         const mapsCandidates = (mapsResponse as any).candidates;
@@ -216,23 +278,27 @@ export async function POST(req: Request) {
       ? `${systemPrompt}${durationInstruction}\n\nGunakan data tempat berikut untuk membuat rekomendasi yang akurat dan berbasis data nyata:${mapsContext}`
       : `${systemPrompt}${durationInstruction}`;
     
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: contents,
-      config: {
-        systemInstruction: enrichedSystemPrompt,
-        tools: [{ functionDeclarations: [ITINERARY_TOOL] }],
-        toolConfig: {
-          functionCallingConfig: {
-            mode: "ANY" as any,
-            allowedFunctionNames: ["generate_regenerative_itinerary"]
+    // Use retry for API calls that might fail due to rate limits
+    const response = await fetchWithRetry(
+      "generateContent (Step 2)",
+      () => ai.models.generateContent({
+        model: modelName,
+        contents: contents,
+        config: {
+          systemInstruction: enrichedSystemPrompt,
+          tools: [{ functionDeclarations: [ITINERARY_TOOL] }],
+          toolConfig: {
+            functionCallingConfig: {
+              mode: "ANY" as any,
+              allowedFunctionNames: ["generate_regenerative_itinerary"]
+            }
+          },
+          httpOptions: {
+            timeout: currentModel.timeout
           }
-        },
-        httpOptions: {
-          timeout: currentModel.timeout
         }
-      }
-    });
+      })
+    );
 
     // Parse response
     const candidates = (response as any).candidates;
@@ -281,30 +347,102 @@ export async function POST(req: Request) {
           // Extract data from AI response
           const region = args.trip_metadata?.region || "Indonesia";
           const fromLocation = args.trip_metadata?.from_location || "Jakarta";
+          const durationDays = args.trip_metadata?.duration_days || 7;
+          
+          // ═══════════════════════════════════════════════════════════
+          // REVISION DETECTION - Compare with previous trip
+          // ═══════════════════════════════════════════════════════════
+          const currentMetadata: TripMetadata = {
+            region: region,
+            from_location: fromLocation,
+            duration_days: durationDays
+          };
+          
+          // Simple revision detection:
+          // - If messages.length > 1 AND same trip metadata = revision
+          // - Otherwise = new trip
+          const revisionCheck = isRevisionTrip(currentMetadata, previousTrip);
+          
+          // Also check simple heuristic: if multiple messages in session
+          const isRevision = revisionCheck.isRevision || (isLikelyRevision && messages.length > 1);
+          
+          console.log(`[revision] ${isRevision ? 'REVISION' : 'NEW TRIP'} - ${revisionCheck.reason}${
+            isLikelyRevision && messages.length > 1 ? ' (session-based)' : ''
+          }`);
           
           // Calculate carbon using emissions.dev API
           let carbonResult = await calculateRoundTripCarbonEmissions(fromLocation, region, 2);
           
-          // Fallback to AI's carbon_data if emissions.dev failed (invalid location/0 distance)
+          // Fallback to AI's carbon_data if emissions.dev failed or if revision
           const aiCarbon = args.carbon_data;
-          if (!carbonResult || carbonResult.total_kg === 0 || carbonResult.distance_km === 0) {
-            console.log("[carbon] Using AI's carbon_data as fallback");
-            carbonResult = {
-              outbound: { 
-                carbon_kg: aiCarbon?.total_emissions_kg ? Math.round(aiCarbon.total_emissions_kg / 2) : 0,
-                distance_km: aiCarbon?.distance_km || 0,
-                per_passenger_kg: aiCarbon?.total_emissions_kg ? Math.round(aiCarbon.total_emissions_kg / 2) : 0
-              },
-              return_: { 
-                carbon_kg: aiCarbon?.total_emissions_kg ? Math.round(aiCarbon.total_emissions_kg / 2) : 0,
-                distance_km: aiCarbon?.distance_km || 0,
-                per_passenger_kg: aiCarbon?.total_emissions_kg ? Math.round(aiCarbon.total_emissions_kg / 2) : 0
-              },
-              total_kg: aiCarbon?.total_emissions_kg || 0,
-              distance_km: (aiCarbon?.distance_km || 0) * 2,
-              per_passenger_kg: aiCarbon?.total_emissions_kg || 0,
-              with_buffer: Math.round((aiCarbon?.emissions_with_buffer_kg || 0))
-            };
+          
+          // If revision detected, prefer AI's carbon_data (more stable) 
+          // unless emissions.dev returns valid data
+          const useAIFallback = isRevision || 
+            !carbonResult || 
+            carbonResult.total_kg === 0 || 
+            carbonResult.distance_km === 0;
+          
+          if (useAIFallback) {
+            // Check if AI returned valid carbon_data
+            const hasValidCarbonData = aiCarbon?.total_emissions_kg && aiCarbon.total_emissions_kg > 0;
+            
+            if (hasValidCarbonData) {
+              // Use AI's carbon data (preferred)
+              console.log("[carbon] Using AI's carbon_data");
+              carbonResult = {
+                outbound: { 
+                  carbon_kg: aiCarbon.total_emissions_kg / 2,
+                  distance_km: aiCarbon.distance_km || 0,
+                  per_passenger_kg: aiCarbon.total_emissions_kg / 2
+                },
+                return_: { 
+                  carbon_kg: aiCarbon.total_emissions_kg / 2,
+                  distance_km: aiCarbon.distance_km || 0,
+                  per_passenger_kg: aiCarbon.total_emissions_kg / 2
+                },
+                total_kg: aiCarbon.total_emissions_kg,
+                distance_km: (aiCarbon.distance_km || 0) * 2,
+                per_passenger_kg: aiCarbon.total_emissions_kg,
+                with_buffer: aiCarbon.emissions_with_buffer_kg || Math.round(aiCarbon.total_emissions_kg * 1.1)
+              };
+            } else {
+              // AI didn't return carbon_data - use DEFAULT estimation based on transport
+              console.log("[carbon] AI missing carbon_data - using default estimation");
+              
+              // Default: Flight Medan-Sabang approx 170kg per passenger (round trip)
+              const defaultFlightCarbon = 170; // kg per person
+              const defaultDistance = 840; // km (Medan-Sabang round trip)
+              
+              // Check for other transports in itinerary to adjust
+              const hasBusOrFerry = args.itinerary?.some((day: any) => 
+                day.activities?.some((act: any) => 
+                  act.transport?.toLowerCase().includes('bus') || 
+                  act.transport?.toLowerCase().includes('ferry')
+                )
+              );
+              
+              // If using bus+ferry, estimate lower
+              const multiplier = hasBusOrFerry ? 0.8 : 1.0;
+              const estimatedCarbon = Math.round(defaultFlightCarbon * multiplier);
+              
+              carbonResult = {
+                outbound: { 
+                  carbon_kg: Math.round(estimatedCarbon / 2),
+                  distance_km: Math.round(defaultDistance * multiplier / 2),
+                  per_passenger_kg: Math.round(estimatedCarbon / 2)
+                },
+                return_: { 
+                  carbon_kg: Math.round(estimatedCarbon / 2),
+                  distance_km: Math.round(defaultDistance * multiplier / 2),
+                  per_passenger_kg: Math.round(estimatedCarbon / 2)
+                },
+                total_kg: estimatedCarbon,
+                distance_km: Math.round(defaultDistance * multiplier),
+                per_passenger_kg: estimatedCarbon,
+                with_buffer: Math.round(estimatedCarbon * 1.1)
+              };
+            }
           }
           
           // Get eco activity suggestion (async)
