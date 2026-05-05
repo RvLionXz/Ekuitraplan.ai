@@ -4,7 +4,7 @@ import { getEnrichedData } from "@/lib/travel-simulator";
 import { aiConfig, systemPrompts } from "@/lib/ai-config";
 import { calculateRoundTripCarbonEmissions, calculateEcoComparison, formatCarbonDisplay } from "@/lib/carbon";
 import { getEcoActivitySuggestion, formatEcoActivityDisplay } from "@/lib/eco-activity";
-import { getCoordinates, parseLocationFromText, createDebugInfo, extractMapsDistance, extractMapsPlaces } from "@/lib/maps-helper";
+import { getCoordinates, parseLocationFromText, createDebugInfo, extractMapsDistance, extractMapsPlaces, extractDurationFromText } from "@/lib/maps-helper";
 
 const apiKey = process.env.GOOGLE_API_KEY;
 
@@ -28,6 +28,7 @@ const ITINERARY_TOOL = {
           title: { type: Type.STRING, description: "Trip title" },
           region: { type: Type.STRING, description: "Destination region" },
           from_location: { type: Type.STRING, description: "Origin city for carbon calculation" },
+          duration_days: { type: Type.NUMBER, description: "JUMLAH HARI yang diminta user - WAJIB SESUAI dengan input" },
           total_eco_score: { type: Type.NUMBER, description: "Eco score 0-100" }
         }
       },
@@ -67,18 +68,18 @@ const ITINERARY_TOOL = {
       },
       itinerary: {
         type: Type.ARRAY,
-        description: "Daily itinerary array",
+        description: "Daily itinerary array - WAJIB contiene exactamente duration_days yang diminta user. Ejemplo: kalau user minta 20 hari, itinerary HARUS contain tepat 20 hari dengan day 1-20.",
         items: {
           type: Type.OBJECT,
           properties: {
-            day: { type: Type.NUMBER, description: "Day number" },
+            day: { type: Type.NUMBER, description: "Day number (1, 2, 3... sesuai durasi)" },
             theme: { type: Type.STRING, description: "Day theme" },
             activities: {
               type: Type.ARRAY,
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  time: { type: Type.STRING },
+                  time: { type: Type.STRING, description: "Waktu deskriptif: Pagi, Siang, Sore, Malam. JANGAN gunakan angka jam." },
                   activity: { type: Type.STRING },
                   location: { type: Type.STRING },
                   transport: { type: Type.STRING, description: "Transport mode: MRT, jalankaki, taksi, bus, car" },
@@ -128,6 +129,10 @@ export async function POST(req: Request) {
     // Parse location from user input for Maps context
     const locationContext = parseLocationFromText(lastMessage);
     const coordinates = getCoordinates(locationContext);
+    
+    // Extract duration from user input
+    const durationDays = extractDurationFromText(lastMessage);
+    console.log(`[duration] Extracted duration: ${durationDays} days`);
     
     console.log(`[maps] Location detected: ${locationContext}`, { coordinates });
     
@@ -204,9 +209,14 @@ export async function POST(req: Request) {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     console.log("[maps] Step 2: Generating itinerary with function calling...");
     
+    // Build duration instruction
+    const durationInstruction = durationDays 
+      ? `\n📅 DURASI: User meminta ${durationDays} hari. WAJIB generate itinerary dengan tepat ${durationDays} hari!\n⚠️ JANGAN 生成 kurang dari yang diminta!` 
+      : `\n📅 DURASI: Tidak terdeteksi! Jika durasi tidak jelas, tanya user dulu перед generate!`;
+    
     const enrichedSystemPrompt = mapsContext 
-      ? `${systemPrompt}\n\nGunakan data tempat berikut untuk membuat rekomendasi yang akurat dan berbasis data nyata:${mapsContext}`
-      : systemPrompt;
+      ? `${systemPrompt}${durationInstruction}\n\nGunakan data tempat berikut untuk membuat rekomendasi yang akurat dan berbasis data nyata:${mapsContext}`
+      : `${systemPrompt}${durationInstruction}`;
     
     const response = await ai.models.generateContent({
       model: modelName,

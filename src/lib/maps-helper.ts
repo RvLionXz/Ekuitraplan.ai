@@ -188,6 +188,43 @@ export function createDebugInfo(
   };
 }
 
+// ===== DURATION EXTRACTION =====
+
+/**
+ * Extract duration (days) from user input text
+ * Supports: "20 hari", "2 minggu", "1 bulan", dll
+ */
+export function extractDurationFromText(text: string): number | null {
+  if (!text) return null;
+  
+  const lowerText = text.toLowerCase();
+  
+  // Pattern: number + "hari" / "day" / "days"
+  const hariMatch = lowerText.match(/(\d+)\s*(?:hari|day|days)/);
+  if (hariMatch) {
+    const days = parseInt(hariMatch[1], 10);
+    if (days > 0 && days <= 365) return days;
+  }
+  
+  // Pattern: number + "minggu" / "week" / "weeks"
+  const mingguMatch = lowerText.match(/(\d+)\s*(?:minggu|week|weeks)/);
+  if (mingguMatch) {
+    const weeks = parseInt(mingguMatch[1], 10);
+    const days = weeks * 7;
+    if (days > 0 && days <= 365) return days;
+  }
+  
+  // Pattern: number + "bulan" / "month" / "months"
+  const bulanMatch = lowerText.match(/(\d+)\s*(?:bulan|month|months)/);
+  if (bulanMatch) {
+    const months = parseInt(bulanMatch[1], 10);
+    const days = months * 30;
+    if (days > 0 && days <= 365) return days;
+  }
+  
+  return null;
+}
+
 // ===== MAPS DISTANCE EXTRACTION =====
 
 interface GroundingChunk {
