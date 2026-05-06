@@ -27,19 +27,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from "framer-motion";
-import dynamic from 'next/dynamic';
-
-const InteractiveMap = dynamic(() => import('@/components/InteractiveMap'), {
-  ssr: false,
-  loading: () => (
-    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-warm-cream to-light-gray overflow-hidden">
-      <div className="text-center space-y-4 opacity-40">
-        <MapIcon size={64} className="mx-auto text-text-muted animate-pulse" />
-        <p className="text-text-muted font-medium">Memuat Peta...</p>
-      </div>
-    </div>
-  )
-});
+import InteractiveMap from "@/components/InteractiveMap";
 
 function PlannerContent() {
   const searchParams = useSearchParams();
@@ -69,13 +57,15 @@ function PlannerContent() {
   const [ecoComparisons, setEcoComparisons] = useState<any[]>([]);
   const [recommendedActivities, setRecommendedActivities] = useState<any[]>([]);
   const [selectedHotel, setSelectedHotel] = useState<any>(null);
+  const [hasTriggeredInitial, setHasTriggeredInitial] = useState(false);
 
   // Initial trigger if there's a query from landing page
   useEffect(() => {
-    if (initialQuery && messages.length === 0) {
+    if (initialQuery && messages.length === 0 && !hasTriggeredInitial) {
+      setHasTriggeredInitial(true);
       handleSendMessage(initialQuery);
     }
-  }, [initialQuery]);
+  }, [initialQuery, hasTriggeredInitial]);
 
   // Set initial hovered item when itinerary or discovery data arrives
   useEffect(() => {
@@ -164,59 +154,6 @@ function PlannerContent() {
     } finally {
       setIsGenerating(false);
     }
-  };
-
-  const generateMarkers = () => {
-    const markers: any[] = [];
-    if (discoveryData?.hotels) {
-      discoveryData.hotels.forEach((h: any, idx: number) => {
-        markers.push({
-          id: `hotel-${idx}`,
-          name: h.name,
-          location: h.region || itinerary?.trip_metadata?.region || 'Indonesia',
-          type: 'hotel',
-          number: 'H'
-        });
-      });
-    }
-
-    if (itinerary?.itinerary) {
-      let actCount = 1;
-      itinerary.itinerary.forEach((day: any) => {
-        if (day.activities) {
-          day.activities.forEach((act: any) => {
-            if (act.location) {
-              markers.push({
-                id: `act-${actCount}`,
-                name: act.activity,
-                location: act.location,
-                type: 'activity',
-                number: actCount
-              });
-              actCount++;
-            }
-          });
-        }
-      });
-    }
-
-    if (hoveredItem) {
-      // Highlight hovered item by finding it in markers or adding it
-      const existingIdx = markers.findIndex(m => m.name === hoveredItem.name);
-      if (existingIdx !== -1) {
-        markers.push({...markers.splice(existingIdx, 1)[0], type: 'main'});
-      } else {
-        markers.push({
-          id: 'hovered',
-          name: hoveredItem.name,
-          location: hoveredItem.location,
-          type: 'main',
-          number: '⭐'
-        });
-      }
-    }
-
-    return markers;
   };
 
   return (
@@ -732,34 +669,14 @@ function PlannerContent() {
         </div>
       </div>
 
-      {/* Right Panel: Interactive Map */}
       <div className={`flex-1 relative bg-light-gray transition-all ${
         activeTab === 'map' ? 'flex' : 'hidden lg:flex'
       }`}>
-        {itinerary || discoveryData ? (
-          <InteractiveMap 
-            region={itinerary?.trip_metadata?.region || discoveryData?.hotels?.[0]?.region || 'Indonesia'}
-            markers={generateMarkers()}
-            hoveredItem={hoveredItem}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-warm-cream to-light-gray overflow-hidden">
-            {!hoveredItem && (
-              <div className="text-center space-y-4 opacity-40">
-                <MapIcon size={64} className="mx-auto text-text-muted" />
-                <p className="text-text-muted font-medium">Peta interaktif akan muncul di sini</p>
-                <p className="text-xs text-text-muted mt-2">Klik aktivitas untuk melihat detail</p>
-              </div>
-            )}
-            
-            {/* Decorative Map Elements */}
-            <div className="absolute inset-0 pointer-events-none opacity-20">
-               <div className="absolute top-1/4 left-1/3 w-2 h-2 bg-primary rounded-full animate-pulse" />
-               <div className="absolute top-1/2 left-2/3 w-2 h-2 bg-secondary rounded-full animate-pulse [animation-delay:0.5s]" />
-               <div className="absolute top-2/3 left-1/4 w-2 h-2 bg-primary rounded-full animate-pulse [animation-delay:1s]" />
-            </div>
-          </div>
-        )}
+        <InteractiveMap 
+          itinerary={itinerary} 
+          hoveredItem={hoveredItem} 
+          onHoverItem={setHoveredItem} 
+        />
 
         {/* Floating Info Card (Yesterday's Style) */}
         <div className="absolute bottom-6 md:bottom-12 left-1/2 -translate-x-1/2 z-30 w-full px-4 md:px-0 md:w-auto">
