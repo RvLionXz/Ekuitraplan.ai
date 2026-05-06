@@ -1,25 +1,7 @@
-// Carbon Service - Hitung emisi karbon dari transportasi
-// Menggunakan emissions.dev API
-// DOCS: https://emissions.dev/docs/api/travel/calculate
-// 
-// NOTE: Dengan Maps Grounding enabled di route.ts,
-// Gemini akan menggunakan Maps untuk distances secara otomatis.
-// File ini berfungsi sebagai tambahan untuk emissions.dev API calls.
-
 const EMISSIONS_API_KEY = process.env.EMISSIONS_API_KEY;
 const EMISSIONS_API_URL = "https://api.emissions.dev/v1";
 
-interface EmissionsResponse {
-  co2e: number;
-  co2e_unit: string;
-  co2e_grams: number;
-  per_passenger_kg: number;
-  per_passenger_g: number;
-}
-
-// Country code mapping (ISO 3166-1 alpha-2)
 const COUNTRY_CODES: Record<string, string> = {
-  // Indonesia cities
   indonesia: "ID",
   jakarta: "ID",
   bali: "ID",
@@ -33,7 +15,6 @@ const COUNTRY_CODES: Record<string, string> = {
   semarang: "ID",
   denpasar: "ID",
   aceh: "ID",
-  // International
   singapore: "SG",
   malaysia: "MY",
   kuala_lumpur: "MY",
@@ -75,16 +56,9 @@ const COUNTRY_CODES: Record<string, string> = {
 
 function getCountryCode(city: string): string {
   const normalized = city.toLowerCase().trim();
-  return COUNTRY_CODES[normalized] || "ID"; // Default to Indonesia
+  return COUNTRY_CODES[normalized] || "ID";
 }
 
-/**
- * Hitung emisi karbon dari flight menggunakan emissions.dev API
- * @param from - Kota asal
- * @param to - Kota tujuan
- * @param passengers - Jumlah penumpang
- * @param isRoundTrip - Apakah round trip (handled separately)
- */
 export async function calculateFlightCarbonEmissions(
   from: string,
   to: string,
@@ -104,7 +78,6 @@ export async function calculateFlightCarbonEmissions(
     const originCountry = getCountryCode(from);
     const destCountry = getCountryCode(to);
 
-    // Build query params
     const params = new URLSearchParams({
       origin_country: originCountry,
       origin_location: from,
@@ -144,7 +117,6 @@ export async function calculateFlightCarbonEmissions(
 
     console.log("Emissions.dev response:", JSON.stringify(data, null, 2));
 
-    // Parse response - emissions.dev format
     const attrs = data?.data?.attributes;
     if (!attrs) {
       console.error("Emissions.dev unexpected response:", data);
@@ -153,17 +125,15 @@ export async function calculateFlightCarbonEmissions(
 
     const emissions = attrs.emissions || {};
     const route = attrs.route || {};
-    
-    // Check for invalid data - emissions.dev failed to resolve location correctly
+
     const resolvedOrigin = route?.origin?.resolved || "";
     const resolvedDest = route?.destination?.resolved || "";
     const distance = route.total_distance_km || 0;
-    
-    // Invalid if: 0 distance OR origin resolved to Jakarta (wrong location)
-    const isInvalid = distance === 0 || 
+
+    const isInvalid = distance === 0 ||
       (resolvedOrigin && !resolvedOrigin.includes(from) && !resolvedOrigin.includes("Aceh")) ||
       (resolvedDest && !resolvedDest.includes(to.replace(", Indonesia", "").split(",")[0]) && !resolvedDest.includes("Aceh"));
-    
+
     if (isInvalid) {
       console.log("[carbon] Invalid emissions.dev data, will use fallback");
       return {
@@ -184,9 +154,6 @@ export async function calculateFlightCarbonEmissions(
   }
 }
 
-/**
- * Hitung round trip carbon emissions (outbound + return)
- */
 export async function calculateRoundTripCarbonEmissions(
   from: string,
   to: string,
@@ -207,7 +174,7 @@ export async function calculateRoundTripCarbonEmissions(
   const totalCarbon = (outbound?.carbon_kg || 0) + (return_?.carbon_kg || 0);
   const totalDistance = (outbound?.distance_km || 0) + (return_?.distance_km || 0);
   const perPassenger = (outbound?.per_passenger_kg || 0) + (return_?.per_passenger_kg || 0);
-  const buffer = totalCarbon * 0.1; // 10% regeneration buffer
+  const buffer = totalCarbon * 0.1;
 
   return {
     outbound,
@@ -219,9 +186,6 @@ export async function calculateRoundTripCarbonEmissions(
   };
 }
 
-/**
- * Format carbon result untuk display (alias for backward compatibility)
- */
 export function formatCarbonDisplay(carbonKg: number): string {
   if (carbonKg < 1) {
     return `${Math.round(carbonKg * 1000)} gram CO2`;
@@ -232,7 +196,6 @@ export function formatCarbonDisplay(carbonKg: number): string {
   return `${(carbonKg / 1000).toFixed(1)} ton CO2`;
 }
 
-// Transport mode emoji mapping
 export const TRANSPORT_ICONS: Record<string, string> = {
   rail: "🚇",
   bus: "🚌",
@@ -243,101 +206,69 @@ export const TRANSPORT_ICONS: Record<string, string> = {
   flight: "✈️"
 };
 
-/**
- * Map various transport mode strings (including Indonesian) to valid API modes
- */
-function mapTransportMode(mode: string): 'flight' | 'rail' | 'car' | 'bus' | 'ferry' | 'taxi' | 'walk' | 'ojek'{
+function mapTransportMode(mode: string): 'flight' | 'rail' | 'car' | 'bus' | 'ferry' | 'taxi' | 'walk' | 'ojek' {
   const m = mode.toLowerCase().trim();
-  
-  // Walking
+
   if (m.includes('jalan') || m.includes('walk') || m.includes('kaki')) return 'walk';
-  
-  // Rail/Public Transport
+
   if (
-    m.includes('mrt') || 
-    m.includes('lrt') || 
-    m.includes('kereta') || 
-    m.includes('rail') || 
-    m.includes('train') || 
+    m.includes('mrt') ||
+    m.includes('lrt') ||
+    m.includes('kereta') ||
+    m.includes('rail') ||
+    m.includes('train') ||
     m.includes('krl') ||
     m.includes('commuter')
   ) return 'rail';
-  
-  // Bus
+
   if (m.includes('bus') || m.includes('transjakarta') || m.includes('angkot')) return 'bus';
-  
-  // Taxi/Ride-sharing
+
   if (m.includes('taksi') || m.includes('taxi') || m.includes('grab') || m.includes('gojek') || m.includes('ojek')) return 'taxi';
-  
-  // Car
+
   if (m.includes('mobil') || m.includes('car') || m.includes('pribadi')) return 'car';
-  
-  // Ferry
+
   if (m.includes('kapal') || m.includes('ferry') || m.includes('laut')) return 'ferry';
-  
-  // Flight
+
   if (m.includes('pesawat') || m.includes('flight') || m.includes('udara')) return 'flight';
 
-  return 'car'; // Fallback
+  return 'car';
 }
 
-// =============== DEFAULT EMISSION FACTORS FOR LOCAL TRANSPORT =================
-
-// kg CO2 per passenger-km (approximate values for Indonesia)
-// Based on typical vehicle emission factors
-// Updated: comprehensive mapping for all transport types
 const LOCAL_EMISSION_FACTORS: Record<string, number> = {
-  // Two-wheelers
-  ojek: 0.20,          // Motorbike (ojek) - high emissions
-  ojet: 0.20,          // ojet variant
-  motor: 0.20,         // motorcycle
-  'sepeda motor': 0.20,  // motorbike
-  
-  // Cars
-  taxi: 0.15,           // Taxi/ride-share
-  taksi: 0.15,          // Taxi
-  car: 0.15,           // Private car
-  mobil: 0.15,         // Car
-  'sewa mobil': 0.12,    // Rental car (more efficient)
-  'self drive': 0.12,   // Self-drive
+  ojek: 0.20,
+  ojet: 0.20,
+  motor: 0.20,
+  'sepeda motor': 0.20,
+  taxi: 0.15,
+  taksi: 0.15,
+  car: 0.15,
+  mobil: 0.15,
+  'sewa mobil': 0.12,
+  'self drive': 0.12,
   'private drive': 0.15,
-  
-  // Walking
-  walk: 0,               // Walking - zero emissions
-  'jalan kaki': 0,        // Jalan kaki
+  walk: 0,
+  'jalan kaki': 0,
   'berjalan kaki': 0,
-  
-  // Water transport
-  ferry: 0.08,         // Ferry
+  ferry: 0.08,
   ferri: 0.08,
-  kapal: 0.10,          // Ship/boat
-  perahu: 0.10,         // Traditional boat
-  'perahu kecil': 0.10, // Small boat
+  kapal: 0.10,
+  perahu: 0.10,
+  'perahu kecil': 0.10,
   boat: 0.10,
-  
-  // Flight (long-haul - handled separately)
-  flight: 0.20,         // Flight (long distance)
+  flight: 0.20,
   pesawat: 0.20,
   udara: 0.20,
-  
-  // Bus
   bus: 0.10,
   umum: 0.10,
 };
 
-/**
- * Parse transport string - handle combos like "Sewa mobil/jalan kaki"
- * Returns the most eco-friendly option (lowest emission)
- */
 function parseTransportMode(transport: string): string {
   if (!transport) return 'car';
-  
+
   const t = transport.toLowerCase().trim();
-  
-  // Handle combo strings - take first or most eco-friendly
+
   const parts = t.split(/[\/]/).map(p => p.trim());
-  
-  // Priority: walk > ferry > bus > boat > ojek > taxi > car > flight
+
   for (const part of parts) {
     if (part.includes('jalan') || part.includes('walk')) return 'walk';
     if (part.includes('ferry') || part.includes('kapal') || part.includes('perahu')) return 'boat';
@@ -347,37 +278,28 @@ function parseTransportMode(transport: string): string {
     if (part.includes('mobil') || part.includes('car') || part.includes('sewa')) return 'car';
     if (part.includes('flight') || part.includes('pesawat')) return 'flight';
   }
-  
-  // Default: return first part
+
   return parts[0] || 'car';
 }
 
-// Default distance estimates per activity type (km)
 const LOCAL_DISTANCE_ESTIMATES: Record<string, number> = {
-  // Short local trips
   'check-in': 5,
-  'checkin': 5,
+  checkin: 5,
   ' snorkeling': 3,
-  'snorkeling': 3,
-  'diving': 5,
-  'sunset': 5,
-  'pantai': 3,
-  'beach': 3,
-  'museum': 2,
-  'tugu': 3,
-  // Medium trips
-  'trekking': 8,
-  'hutan': 10,
+  snorkeling: 3,
+  diving: 5,
+  sunset: 5,
+  pantai: 3,
+  beach: 3,
+  museum: 2,
+  tugu: 3,
+  trekking: 8,
+  hutan: 10,
   'air terjun': 8,
-  'waterfall': 8,
-  // Long trips (unlikely for local)
+  waterfall: 8,
   'default': 5
 };
 
-/**
- * Estimate local emissions for in-destination travel
- * Uses default factors instead of API calls (faster, no external dependencies)
- */
 export function estimateLocalEmissions(
   transport: string,
   activityLocation?: string,
@@ -390,40 +312,33 @@ export function estimateLocalEmissions(
   actual_mode: string;
   message: string;
 } {
-  // Use new parseTransportMode to handle combos
   const mode = parseTransportMode(transport);
-  
-  // Determine distance based on activity
-  let distanceKm = 5; // default
+
+  let distanceKm = 5;
   const activityLower = (activityName || activityLocation || '').toLowerCase();
-  
-  // Check for long-distance travel (flights)
-  const isFlight = mode === 'flight' || 
+
+  const isFlight = mode === 'flight' ||
     (transport?.toLowerCase().includes('flight') || transport?.toLowerCase().includes('pesawat'));
-  
+
   if (isFlight && activityLower.includes('penerbangan')) {
-    // Long-haul flight - use actual distance from carbon_data or estimate
-    distanceKm = 150; // Assume ~150km for short domestic flight
+    distanceKm = 150;
   }
-  
+
   for (const [key, dist] of Object.entries(LOCAL_DISTANCE_ESTIMATES)) {
     if (activityLower.includes(key)) {
       distanceKm = dist;
       break;
     }
   }
-  
-  // Get emission factor
+
   const factor = LOCAL_EMISSION_FACTORS[mode] ?? 0.15;
   const actualEmissions = Number((distanceKm * factor).toFixed(2));
-  const taxiEmissions = Number((distanceKm * 0.15).toFixed(2)); // taxi baseline
-  
-  // Calculate savings (if actual is better than taxi)
-  const saved = actualEmissions < taxiEmissions 
+  const taxiEmissions = Number((distanceKm * 0.15).toFixed(2));
+
+  const saved = actualEmissions < taxiEmissions
     ? Number((taxiEmissions - actualEmissions).toFixed(2))
     : 0;
-  
-  // Generate message
+
   let message = '';
   if (mode === 'walk') {
     message = 'Jalan kaki - nol emisi! 🌿';
@@ -436,7 +351,7 @@ export function estimateLocalEmissions(
   } else {
     message = 'Pilihan yang schon! ✨';
   }
-  
+
   return {
     actual_carbon_kg: actualEmissions,
     taxi_carbon_kg: taxiEmissions,
@@ -447,10 +362,6 @@ export function estimateLocalEmissions(
   };
 }
 
-/**
- * Calculate eco comparison - compare actual transport vs taxi
- * Returns CO2 saved by choosing eco-friendly transport
- */
 export async function calculateEcoComparison(
   from: string,
   to: string,
@@ -469,14 +380,12 @@ export async function calculateEcoComparison(
     return null;
   }
 
-  // Normalize transport mode
   const mode = mapTransportMode(actualMode);
-  
+
   try {
     const originCountry = getCountryCode(from);
     const destCountry = getCountryCode(to);
 
-    // If it's walking, we only need to calculate the baseline (taxi)
     const taxiParams = new URLSearchParams({
       origin_country: originCountry,
       origin_location: from,
@@ -504,24 +413,22 @@ export async function calculateEcoComparison(
         saved_carbon_kg: Math.round(taxiEmissions * 10) / 10,
         distance_km: distance,
         actual_mode: 'walk',
-        message: taxiEmissions > 0 
-          ? `Jalan kaki menyelamatkan ${Math.round(taxiEmissions * 10) / 10}kg CO₂ dibanding taksi! 🌿` 
+        message: taxiEmissions > 0
+          ? `Jalan kaki menyelamatkan ${Math.round(taxiEmissions * 10) / 10}kg CO₂ dibanding taksi! 🌿`
           : 'Pilihan yang sangat ramah lingkungan! ✨'
       };
     }
 
-    // For other modes, calculate both
     const actualParams = new URLSearchParams({
       origin_country: originCountry,
       origin_location: from,
       destination_country: destCountry,
       destination_location: to,
-      transport_mode: mode === 'flight' ? 'flight' : mode, // Ensure valid API mode
+      transport_mode: mode === 'flight' ? 'flight' : mode,
       passengers: passengers.toString(),
       return_trip: 'false'
     });
 
-    // Make both requests in parallel
     const [actualRes, taxiRes] = await Promise.all([
       fetch(`${EMISSIONS_API_URL}/travel/emissions?${actualParams}`, {
         method: 'GET',
@@ -545,13 +452,11 @@ export async function calculateEcoComparison(
     const taxiEmissions = taxiData?.data?.attributes?.emissions?.co2e || 0;
     const distance = actualData?.data?.attributes?.route?.total_distance_km || 0;
 
-    // Calculate savings
     const saved = Math.max(0, taxiEmissions - actualEmissions);
-    
-    // Generate message based on mode and savings
+
     let message = '';
     if (mode === 'rail' || mode === 'bus') {
-      message = saved > 0.1 
+      message = saved > 0.1
         ? `Naik transportasi umum hemat ${saved.toFixed(1)}kg CO₂! 🚌`
         : 'Transportasi umum pilihan cerdas & hijau! ✨';
     } else if (saved > 0.1) {
@@ -576,8 +481,6 @@ export async function calculateEcoComparison(
   }
 }
 
-// ============ TRANSPORT RECOMMENDATION LOGIC ============
-
 interface TransportRecommendation {
   recommended: string;
   emoji: string;
@@ -586,8 +489,6 @@ interface TransportRecommendation {
 }
 
 export const getRecommendedTransport = (distanceKm: number): TransportRecommendation => {
-  // Distance-based transport recommendation
-  
   if (distanceKm <= 1) {
     return {
       recommended: 'jalan kaki',
@@ -613,7 +514,7 @@ export const getRecommendedTransport = (distanceKm: number): TransportRecommenda
     return {
       recommended: 'sewa mobil / driver',
       emoji: '🚗',
-      reason: 'Untuk jarak sedang, sewa mobil dengandriver lebih nyaman.',
+      reason: 'Untuk jarak sedang, sewa mobil dengan driver lebih nyaman.',
       alternative: 'travel berbagi'
     };
   } else if (distanceKm <= 150) {
@@ -633,11 +534,9 @@ export const getRecommendedTransport = (distanceKm: number): TransportRecommenda
   }
 };
 
-// Validate if AI's transport choice makes sense for the given distance
 export const validateTransportChoice = (choice: string, distanceKm: number): { valid: boolean; reason?: string; suggestion?: string } => {
   const choiceLower = choice.toLowerCase();
-  
-  // Invalid choices that don't match distance
+
   if (choiceLower.includes('jalan kaki') || choiceLower.includes('walk')) {
     if (distanceKm > 3) {
       const rec = getRecommendedTransport(distanceKm);
@@ -648,7 +547,7 @@ export const validateTransportChoice = (choice: string, distanceKm: number): { v
       };
     }
   }
-  
+
   if (choiceLower.includes('taksi') || choiceLower.includes('taxi')) {
     if (distanceKm > 100) {
       const rec = getRecommendedTransport(distanceKm);
@@ -659,9 +558,8 @@ export const validateTransportChoice = (choice: string, distanceKm: number): { v
       };
     }
   }
-  
+
   if (choiceLower.includes('car') && !choiceLower.includes('sewa')) {
-    // AI used "car" but meant something else - check if reasonable
     if (distanceKm < 5 || distanceKm > 80) {
       const rec = getRecommendedTransport(distanceKm);
       return {
@@ -671,12 +569,9 @@ export const validateTransportChoice = (choice: string, distanceKm: number): { v
       };
     }
   }
-  
+
   return { valid: true };
 }
-
-// ============ FALLBACK DISTANCE ESTIMATION ============
-// Used when Maps Grounding doesn't return distance
 
 interface DestinationPair {
   from: string;
@@ -684,7 +579,6 @@ interface DestinationPair {
   estimatedKm: number;
 }
 
-// Rough distance estimates for common routes (fallback)
 const FALLBACK_DISTANCES: DestinationPair[] = [
   { from: 'kuta', to: 'ubud', estimatedKm: 30 },
   { from: 'kuta', to: 'uluwatu', estimatedKm: 25 },
@@ -698,19 +592,14 @@ const FALLBACK_DISTANCES: DestinationPair[] = [
   { from: 'denpasar', to: 'badung', estimatedKm: 10 },
   { from: 'jakarta', to: 'bandung', estimatedKm: 150 },
   { from: 'jakarta', to: 'bogor', estimatedKm: 60 },
-  { from: 'jakarta', to: 'bali', estimatedKm: 2500 }, // flight
+  { from: 'jakarta', to: 'bali', estimatedKm: 2500 },
   { from: 'surabaya', to: 'malang', estimatedKm: 90 },
 ];
 
-/**
- * Fallback distance estimation - used when Maps Grounding fails
- * This is a ROUGH estimate only!
- */
 export function getEstimatedDistance(from: string, to: string): number | null {
   const fromNorm = from.toLowerCase();
   const toNorm = to.toLowerCase();
-  
-  // Direct match
+
   for (const pair of FALLBACK_DISTANCES) {
     if ((fromNorm.includes(pair.from) || pair.from.includes(fromNorm)) &&
         (toNorm.includes(pair.to) || pair.to.includes(toNorm))) {
@@ -718,8 +607,7 @@ export function getEstimatedDistance(from: string, to: string): number | null {
       return pair.estimatedKm;
     }
   }
-  
-  // Check reverse
+
   for (const pair of FALLBACK_DISTANCES) {
     if ((fromNorm.includes(pair.to) || pair.to.includes(fromNorm)) &&
         (toNorm.includes(pair.from) || pair.from.includes(toNorm))) {
@@ -727,8 +615,7 @@ export function getEstimatedDistance(from: string, to: string): number | null {
       return pair.estimatedKm;
     }
   }
-  
-  // Default - return null so caller can handle
+
   console.warn(`[carbon] No fallback distance for ${from} → ${to}`);
   return null;
 }

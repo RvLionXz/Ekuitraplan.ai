@@ -1,0 +1,1 @@
+export { getEnrichedData } from "./travel-simulator";

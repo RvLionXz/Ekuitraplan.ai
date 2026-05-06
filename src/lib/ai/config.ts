@@ -1,6 +1,3 @@
-// AI Configuration - Easy switch between models
-// Just change AI_MODEL in .env file
-
 interface ModelConfig {
   provider: string;
   timeout: number;
@@ -8,15 +5,8 @@ interface ModelConfig {
 }
 
 export const aiConfig = {
-  // Available models:
-  // - "gemini-2.5-flash" (recommended - full Maps grounding support)
-  // - "gemini-3.1-flash-lite-preview" (fast & cheap, but Maps grounding unreliable)
-  // - "gemma-4-26b-a4b-it" (gemma 4 - needs @google/genai SDK)
-  
-  // Current active model - change this in .env
   model: process.env.AI_MODEL || "gemini-3.1-flash-lite-preview",
-  
-  // Model-specific settings
+
   models: {
     "gemma-4-26b-a4b-it": {
       provider: "gemma",
@@ -34,15 +24,13 @@ export const aiConfig = {
       description: "Gemini 3.1 Flash-Lite - fast & cheap (no Maps grounding)"
     } as ModelConfig
   },
-  
-  // Get current model config
+
   getCurrentModel(): ModelConfig {
     const modelKey = this.model as keyof typeof this.models;
     return this.models[modelKey] || this.models["gemini-2.5-flash"];
   }
 };
 
-// System prompts for each model type
 export const systemPrompts = {
   travelPlanner: `Anda adalah Arisca, Travel Planner dari Ekuitraplan.ai.
 
@@ -121,7 +109,6 @@ CONTOH FLOW:
 - User: "Ke Bali 1 minggu" → Tanya: "Dari mana berangkat?"
 - User: "dari Jakarta" → Generate itinerary dengan Maps data`,
 
-  // For models with thinking control (minimal)
   travelPlannerMinimal: `Anda adalah Arisca, Travel Planner.
 TUGAS: Kumpulkan info WAJIB dulu (tujuan, durasi, dari mana).
 JANGAN generate kalau info WAJIB belum lengkap.
