@@ -110,6 +110,13 @@ ATURAN:
 - FORMAT WAKTU: JANGAN gunakan jam (contoh: 08:00). Gunakan waktu deskriptif: Pagi, Siang, Sore, Malam.
 - Pastikan jadwal logis dengan aktivitas harian dasar (makan, istirahat, check-in).
 
+✅ FORMAT LOCATION WAJIB:
+- Untuk setiap activity, field "location" HARUS menggunakan NAMA KOTA/DAERAH CLEAN:
+  ✅ BENAR: "location": "Ubud", "Sidemen", "Amed", "Bali"
+  ❌ SALAH: "location": "Banyak pengrajin lokal di Sidemen", "Sekitar Ubud", "Jalan Raya..."
+- Gunakan hanya nama wilayah yang sudah dikenal: Ubud, Sidemen, Amed, Canggu, Kuta, Seminyak, Jimbaran, Sanur, Nusa Dua, Lovina, Munduk, Pemuteran, dll
+- Kalau lokasi spesifik,tulis di field "description", bukan di "location"!
+
 CONTOH FLOW:
 - User: "Ke Bali 1 minggu" → Tanya: "Dari mana berangkat?"
 - User: "dari Jakarta" → Generate itinerary dengan Maps data`,
@@ -143,5 +150,11 @@ PENTING: Setiap activity wajib transport sesuai tabel:
 - >50km: travel / flight
 
 FORMAT WAKTU: JANGAN gunakan angka jam (contoh: 08:00). Gunakan waktu deskriptif (Pagi, Siang, Sore, Malam).
-Pastikan jadwal logis dengan menyertakan waktu makan dan istirahat.`
+Pastikan jadwal logis dengan menyertakan waktu makan dan istirahat.
+
+✅ FORMAT LOCATION WAJIB:
+- Untuk setiap activity, field "location" HARUS menggunakan NAMA KOTA/DAERAH CLEAN:
+  ✅ BENAR: "location": "Ubud", "Sidemen", "Amed", "Bali"
+  ❌ SALAH: "location": "Banyak pengrajin lokal di Sidemen", "Sekitar Ubud", "Jalan Raya..."
+- Gunakan hanya nama wilayah yang sudah dikenal: Ubud, Sidemen, Amed, Canggu, Kuta, Seminyak, Jimbaran, Sanur, Nusa Dua, Lovina, Munduk, Pemuteran, dll`
 };

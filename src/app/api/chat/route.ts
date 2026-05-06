@@ -4,8 +4,9 @@ import { getEnrichedData } from "@/lib/travel-simulator";
 import { aiConfig, systemPrompts } from "@/lib/ai-config";
 import { calculateRoundTripCarbonEmissions, calculateEcoComparison, formatCarbonDisplay, estimateLocalEmissions } from "@/lib/carbon";
 import { getEcoActivitySuggestion, formatEcoActivityDisplay } from "@/lib/eco-activity";
-import { createDebugInfo, extractMapsDistance, extractMapsPlaces, extractDurationFromText } from "@/lib/maps-helper";
+import { createDebugInfo, extractMapsDistance, extractMapsPlaces, extractPlacesWithCoordinates, extractDurationFromText, getCoordinates } from "@/lib/maps-helper";
 import { getPreviousTripMetadata, saveTripMetadata, isRevisionTrip, type TripMetadata } from "@/lib/session-helper";
+import { geocodePlace } from "@/lib/nominatim";
 
 const apiKey = process.env.GOOGLE_API_KEY;
 
@@ -132,6 +133,9 @@ const ITINERARY_TOOL = {
                   time: { type: Type.STRING, description: "Waktu deskriptif: Pagi, Siang, Sore, Malam. JANGAN gunakan angka jam." },
                   activity: { type: Type.STRING },
                   location: { type: Type.STRING },
+                  latitude: { type: Type.NUMBER, description: "Koordinat lintang (latitude) - contoh: -8.5052" },
+                  longitude: { type: Type.NUMBER, description: "Koordinat bujur (longitude) - contoh: 115.1889" },
+                  placeId: { type: Type.STRING, description: "Google Maps Place ID (opsional)" },
                   transport: { type: Type.STRING, description: "Transport mode: MRT, jalankaki, taksi, bus, car" },
                   eco_impact: { type: Type.STRING },
                   description: { type: Type.STRING }
@@ -321,7 +325,9 @@ export async function POST(req: Request) {
         
         // Use Maps grounding data from Step 1
         const mapsPlaces = extractMapsPlaces({ groundingChunks } as any);
+        const mapsPlacesWithCoords = extractPlacesWithCoordinates({ groundingChunks } as any);
         console.log("[maps] Grounded places from Step 1:", mapsPlaces.length);
+        console.log("[maps] Places with coordinates:", mapsPlacesWithCoords.filter(p => p.latitude).length);
         
         if (fc.name === "generate_regenerative_itinerary" && fc.args) {
           const args = typeof fc.args === 'string' ? JSON.parse(fc.args) : fc.args;
@@ -344,6 +350,159 @@ export async function POST(req: Request) {
             });
           }
 
+          // ═══════════════════════════════════════════════════════════
+// INJECT COORDINATES INTO ITINERARY ACTIVITIES
+// 3-Level Fallback: Maps Grounding → DESTINATION_COORDINATES → Nominatim
+// ═══════════════════════════════════════════════════════════
+          if (args.itinerary) {
+            // Build a combined coordinates lookup
+            const placeCoordMap = new Map<string, { latitude: number; longitude: number; placeId: string; source: string }>();
+            
+            // LEVEL 1: Maps Grounding (if available)
+            if (mapsPlacesWithCoords.length > 0) {
+              console.log("[coords] Level 1: Loading from Maps Grounding...");
+              for (const place of mapsPlacesWithCoords) {
+                if (place.title && place.latitude !== null && place.longitude !== null) {
+                  placeCoordMap.set(place.title.toLowerCase(), {
+                    latitude: place.latitude,
+                    longitude: place.longitude,
+                    placeId: place.placeId,
+                    source: "maps"
+                  });
+                }
+              }
+            }
+            
+            // LEVEL 2: DESTINATION_COORDINATES fallback + Nominatim
+            console.log("[coords] Level 2: Loading from DESTINATION_COORDINATES + location field...");
+            
+            // Collect unique location queries for Nominatim
+            const locationQueries = new Set<string>();
+            
+            for (const day of args.itinerary) {
+              if (day.activities) {
+                for (const activity of day.activities) {
+                  if (activity.activity && !activity.latitude) {
+                    const activityText = activity.activity;
+                    const activityLocation = activity.location; // AI SUDAH MENYEDIAKAN INI!
+                    const activityLower = activityText.toLowerCase();
+                    let matchedCoord: { latitude: number; longitude: number; placeId: string; source: string } | undefined;
+                    
+                    // Try LEVEL 1: Maps Grounding exact match
+                    matchedCoord = placeCoordMap.get(activityLower);
+                    
+                    // Try LEVEL 2a: activity.location first (INI YANG BENAR!)
+                    if (!matchedCoord && activityLocation) {
+                      const destCoord = getCoordinates(activityLocation);
+                      if (destCoord) {
+                        matchedCoord = {
+                          latitude: destCoord.latitude,
+                          longitude: destCoord.longitude,
+                          placeId: `dest:${activityLocation.toLowerCase()}`,
+                          source: "destination-location"
+                        };
+                      }
+                    }
+                    
+                    // Try LEVEL 2b: DESTINATION_COORDINATES fuzzy match on activity text
+                    if (!matchedCoord) {
+                      // Extract likely place names from activity (e.g., "Pura Taman Ayun" -> "taman ayun")
+                      const placeKeywords = [
+                        /pura\s+(\w+)/i,
+                        /museum\s+(\w+)/i,
+                        /rice\s+terrace/gi,
+                        /air\s+terjun/gi,
+                        /desa\s+(\w+)/i,
+                        /cafe\s+(\w+)/i,
+                        /restaurant\s+(\w+)/i,
+                        /hotel\s+(\w+)/i,
+                        /(\w+)\s+village/i
+                      ];
+                      
+                      for (const keyword of placeKeywords) {
+                        const match = activityText.match(keyword);
+                        if (match) {
+                          const placeName = match[1] || match[0];
+                          const destCoord = getCoordinates(placeName);
+                          if (destCoord) {
+                            matchedCoord = {
+                              latitude: destCoord.latitude,
+                              longitude: destCoord.longitude,
+                              placeId: `dest:${placeName.toLowerCase()}`,
+                              source: "destination-keyword"
+                            };
+                            break;
+                          }
+                        }
+                      }
+                    }
+                    
+                    // Try LEVEL 3: Nominatim for activity.location only
+                    if (!matchedCoord && activityLocation) {
+                      // Skip generic activities
+                      const isGenericActivity = /^(makan|bersantai|check|beli|belanja|libur|jalan|rute|penerbangan|perjalanan|transport|tiba|datang|pulang|check|out|in)$/i.test(activityText);
+                      if (!isGenericActivity) {
+                        locationQueries.add(activityLocation);
+                      }
+                    }
+                    
+                    // Assign coordinates if found
+                    if (matchedCoord) {
+                      activity.latitude = matchedCoord.latitude;
+                      activity.longitude = matchedCoord.longitude;
+                      activity.placeId = matchedCoord.placeId;
+                      console.log(`[coords] ✅ ${activity.activity} -> ${matchedCoord.source} (${matchedCoord.latitude}, ${matchedCoord.longitude})`);
+                    } else if (!locationQueries.has(activityLocation || '')) {
+                      console.log(`[coords] ⏳ ${activity.activity} (${activityLocation}) -> pending Nominatim`);
+                    }
+                  }
+                }
+              }
+            }
+            
+            // LEVEL 3: Nominatim lookup (ONLY activity.location, NOT activity text)
+            const uniqueLocations = Array.from(locationQueries);
+            if (uniqueLocations.length > 0) {
+              console.log(`[coords] Level 3: Running Nominatim for ${uniqueLocations.length} locations...`);
+              
+              for (const loc of uniqueLocations) {
+                try {
+                  const result = await geocodePlace(loc);
+                  if (result) {
+                    // Find and update all activities with this location
+                    for (const day of args.itinerary || []) {
+                      if (day.activities) {
+                        for (const activity of day.activities) {
+                          if (activity.location && activity.location.toLowerCase() === loc.toLowerCase()) {
+                            if (!activity.latitude) {
+                              activity.latitude = result.latitude;
+                              activity.longitude = result.longitude;
+                              activity.placeId = result.placeId;
+                              console.log(`[coords] ✅ ${activity.activity} (${activity.location}) -> nominatim (${result.latitude}, ${result.longitude})`);
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                } catch (e) {
+                  console.warn(`[nominatim] Failed for: ${loc}`);
+                }
+              }
+            }
+            
+            // Count how many activities have coordinates
+            let coordsCount = 0;
+            for (const day of args.itinerary || []) {
+              if (day.activities) {
+                for (const activity of day.activities) {
+                  if (activity.latitude && activity.longitude) coordsCount++;
+                }
+              }
+            }
+            console.log(`[maps] ✅ Coordinate injection complete: ${coordsCount} activities with coordinates`);
+          }
+          
           // Extract data from AI response
           const region = args.trip_metadata?.region || "Indonesia";
           const fromLocation = args.trip_metadata?.from_location || "Jakarta";

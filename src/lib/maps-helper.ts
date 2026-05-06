@@ -21,6 +21,8 @@ const DESTINATION_COORDINATES: Record<string, { latitude: number; longitude: num
   amed: { latitude: -8.3362, longitude: 115.6283 },
   tulamben: { latitude: -8.2773, longitude: 115.5935 },
   lovina: { latitude: -8.1581, longitude: 115.0424 },
+  sidemen: { latitude: -8.4247, longitude: 115.5512 },
+  jatiluwih: { latitude: -8.3582, longitude: 115.1098 },
   
   // Yogyakarta & Central Java
   yogyakarta: { latitude: -7.7956, longitude: 110.3695 },
@@ -83,8 +85,11 @@ const DESTINATION_COORDINATES: Record<string, { latitude: number; longitude: num
 /**
  * Get default coordinates for a destination
  * Returns in Maps API format: latitude, longitude
+ * Returns null if not found (for fallback logic)
  */
 export function getCoordinates(destination: string): { latitude: number; longitude: number } | null {
+  if (!destination) return null;
+  
   const normalized = destination.toLowerCase().trim();
   
   // Direct match
@@ -92,16 +97,16 @@ export function getCoordinates(destination: string): { latitude: number; longitu
     return DESTINATION_COORDINATES[normalized];
   }
   
-  // Partial match (e.g., "Nusa Dua Bali" → "nusa_dua")
+  // Partial match (e.g., "Nusa Dua Bali" → "nusa_dua", "Ubud" -> "ubud")
   for (const key of Object.keys(DESTINATION_COORDINATES)) {
     if (normalized.includes(key) || key.includes(normalized)) {
       return DESTINATION_COORDINATES[key];
     }
   }
   
-  // Default to Bali if not found
-  console.warn(`[maps-helper] Coordinates not found for "${destination}", defaulting to Bali`);
-  return DESTINATION_COORDINATES['bali'];
+  // Return null if not found (let Nominatim handle it)
+  console.log(`[maps-helper] Coordinates not found for "${destination}", will try Nominatim`);
+  return null;
 }
 
 /**
@@ -307,4 +312,81 @@ export function extractMapsPlaces(
       placeId: chunk.maps?.placeId || '',
       uri: chunk.maps?.uri || ''
     }));
+}
+
+// ===== COORDINATE EXTRACTION =====
+
+export interface PlaceWithCoordinates {
+  title: string;
+  placeId: string;
+  uri: string;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+/**
+ * Extract coordinates from Google Maps URI
+ * URI format: https://www.google.com/maps/place/-8.5052,115.1889/?...
+ * or: https://www.google.com/maps/@-8.5052,115.1889,15z/...
+ */
+function extractCoordinatesFromUri(uri: string): { latitude: number | null; longitude: number | null } {
+  if (!uri) return { latitude: null, longitude: null };
+  
+  try {
+    // Pattern 1: /place/-8.5052,115.1889/
+    const placeMatch = uri.match(/\/place\/(-?[\d.]+),(-?[\d.]+)\//);
+    if (placeMatch) {
+      return {
+        latitude: parseFloat(placeMatch[1]),
+        longitude: parseFloat(placeMatch[2])
+      };
+    }
+    
+    // Pattern 2: /@-8.5052,115.1889,15z/
+    const atMatch = uri.match(/@(-?[\d.]+),(-?[\d.]+),/);
+    if (atMatch) {
+      return {
+        latitude: parseFloat(atMatch[1]),
+        longitude: parseFloat(atMatch[2])
+      };
+    }
+    
+    // Pattern 3: ?q=-8.5052,115.1889
+    const queryMatch = uri.match(/[?&]q=(-?[\d.]+),(-?[\d.]+)/);
+    if (queryMatch) {
+      return {
+        latitude: parseFloat(queryMatch[1]),
+        longitude: parseFloat(queryMatch[2])
+      };
+    }
+  } catch (error) {
+    console.warn("[maps-helper] Failed to extract coordinates from URI:", uri);
+  }
+  
+  return { latitude: null, longitude: null };
+}
+
+/**
+ * Extract places with coordinates from grounding metadata
+ */
+export function extractPlacesWithCoordinates(
+  groundingMetadata: GroundingMetadata | undefined
+): PlaceWithCoordinates[] {
+  if (!groundingMetadata?.groundingChunks) return [];
+  
+  return groundingMetadata.groundingChunks
+    .filter((chunk) => chunk.maps)
+    .map((chunk) => {
+      const uri = chunk.maps?.uri || '';
+      const coords = extractCoordinatesFromUri(uri);
+      
+      return {
+        title: chunk.maps?.title || '',
+        placeId: chunk.maps?.placeId || '',
+        uri: uri,
+        latitude: coords.latitude,
+        longitude: coords.longitude
+      };
+    })
+    .filter((place) => place.title); // Only return places with titles
 }

@@ -22,12 +22,20 @@ export default function InteractiveMap({ itinerary, hoveredItem, onHoverItem }: 
     if (!itinerary?.itinerary) return [];
 
     let allMarkers: any[] = [];
+    let lastKnownCoord = defaultCenter;
+
     itinerary.itinerary.forEach((day: any) => {
       day.activities.forEach((act: any, idx: number) => {
-        // Fallback to dummy coordinates if not provided by BE
-        // We simulate a path by adding small offsets to the center
-        const lat = act.latitude || (defaultCenter.lat + (Math.random() - 0.5) * 0.2);
-        const lng = act.longitude || (defaultCenter.lng + (Math.random() - 0.5) * 0.2);
+        // PRIORITAS: Gunakan koordinat dari Backend (Log: act.latitude & act.longitude)
+        // FALLBACK: Gunakan koordinat terakhir yang diketahui + sedikit offset agar tidak menumpuk
+        const hasCoords = act.latitude !== undefined && act.longitude !== undefined;
+        
+        const lat = hasCoords ? act.latitude : (lastKnownCoord.lat + (Math.random() - 0.5) * 0.01);
+        const lng = hasCoords ? act.longitude : (lastKnownCoord.lng + (Math.random() - 0.5) * 0.01);
+
+        if (hasCoords) {
+          lastKnownCoord = { lat, lng };
+        }
 
         allMarkers.push({
           id: `${day.day}-${idx}`,
