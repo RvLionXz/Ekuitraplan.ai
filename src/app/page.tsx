@@ -81,6 +81,14 @@ export default function Home() {
                   className="bg-transparent border-none outline-none w-full text-white font-medium placeholder:text-white/40 p-4 resize-none text-lg"
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      if (searchValue.trim()) {
+                        router.push(`/planner?q=${encodeURIComponent(searchValue)}`);
+                      }
+                    }
+                  }}
                 />
                 <div className="flex items-center justify-between mt-2 pt-4 border-t border-white/10">
                   <div className="flex items-center gap-3 md:gap-4 px-2">
@@ -234,7 +242,10 @@ export default function Home() {
             <p className="text-xl text-text-secondary max-w-2xl mx-auto">
               Mulai perjalanan cerdas Anda hari ini dan jadilah bagian dari revolusi pariwisata berkelanjutan.
             </p>
-            <button className="button-gradient text-white px-12 py-5 rounded-full text-lg font-bold transition-all shadow-2xl hover:-translate-y-1 active:scale-95">
+            <button 
+              onClick={() => router.push('/planner')}
+              className="button-gradient text-white px-12 py-5 rounded-full text-lg font-bold transition-all shadow-2xl hover:-translate-y-1 active:scale-95"
+            >
               Rancang Perjalanan Sekarang
             </button>
           </div>
