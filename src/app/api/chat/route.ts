@@ -217,13 +217,38 @@ export async function POST(req: Request) {
           const args = typeof fc.args === 'string' ? JSON.parse(fc.args) : fc.args;
           console.log("Full itinerary args:", JSON.stringify(args, null, 2));
           
+          // ═══════════════════════════════════════════════════════════
+          // SERVER-SIDE VALIDATION: Check if AI is asking for more info
+          // ═══════════════════════════════════════════════════════════
+          const needsMoreInfo = args.needs_more_info === true;
           const hasItinerary = Array.isArray(args.itinerary) && args.itinerary.length > 0;
           
-          // If the model is just asking for more info and hasn't generated an itinerary yet
-          if (!hasItinerary) {
-            console.log("No itinerary generated yet. Returning chat response only.");
+          // Check required fields in trip_metadata
+          const tripMeta = args.trip_metadata || {};
+          const requiredMetaFields = ['region', 'from_location', 'duration_days'];
+          const missingMetaFields = requiredMetaFields.filter(
+            f => !tripMeta[f] || tripMeta[f] === null || tripMeta[f] === undefined
+          );
+          
+          const hasValidMeta = missingMetaFields.length === 0;
+          
+          // Check if carbon_data has required fields
+          const aiCarbonData = args.carbon_data || {};
+          const hasValidCarbon = aiCarbonData.total_emissions_kg > 0 && aiCarbonData.distance_km > 0;
+          
+          // If needs_more_info OR has invalid metadata OR has empty itinerary -> return chat only
+          if (needsMoreInfo || !hasItinerary || !hasValidMeta || !hasValidCarbon) {
+            console.log("[validation] Blocking itinerary generation:");
+            console.log("  - needs_more_info:", needsMoreInfo);
+            console.log("  - hasItinerary:", hasItinerary);
+            console.log("  - hasValidMeta:", hasValidMeta, "| missing:", missingMetaFields);
+            console.log("  - hasValidCarbon:", hasValidCarbon);
+            
+            // Return chat response only - do NOT generate itinerary
             return NextResponse.json({ 
               chat_response: args.chat_response || "Silakan berikan detail tambahan untuk perjalanan Anda.",
+              needs_more_info: true,
+              missing_info: args.missing_info || missingMetaFields,
               itinerary_data: null,
               carbon_data: null,
               eco_activity: null,
@@ -233,6 +258,8 @@ export async function POST(req: Request) {
               maps_grounded: groundingChunks.length > 0
             });
           }
+          
+          console.log("[validation] ✅ All required fields present, proceeding with itinerary generation...");
 
           // ═══════════════════════════════════════════════════════════
 // INJECT COORDINATES INTO ITINERARY ACTIVITIES
@@ -387,10 +414,30 @@ export async function POST(req: Request) {
             console.log(`[maps] ✅ Coordinate injection complete: ${coordsCount} activities with coordinates`);
           }
           
-          // Extract data from AI response
-          const region = args.trip_metadata?.region || "Indonesia";
-          const fromLocation = args.trip_metadata?.from_location || "Jakarta";
-          const durationDays = args.trip_metadata?.duration_days || 7;
+          // Extract data from AI response (should be valid after validation above)
+          const region = args.trip_metadata?.region;
+          const fromLocation = args.trip_metadata?.from_location;
+          const durationDays = args.trip_metadata?.duration_days;
+          
+          // Double-check (safety net)
+          if (!region || !fromLocation || !durationDays) {
+            console.error("[validation] CRITICAL: Missing required fields despite validation pass!");
+            console.error("  region:", region);
+            console.error("  fromLocation:", fromLocation);
+            console.error("  durationDays:", durationDays);
+            return NextResponse.json({ 
+              chat_response: "Maaf, terjadi kesalahan. Silakan coba lagi.",
+              needs_more_info: true,
+              missing_info: ["region", "from_location", "duration_days"],
+              itinerary_data: null,
+              carbon_data: null,
+              eco_activity: null,
+              enriched_data: null,
+              recommended_activities: [],
+              eco_comparisons: [],
+              maps_grounded: groundingChunks.length > 0
+            });
+          }
           
           // ═══════════════════════════════════════════════════════════
           // REVISION DETECTION - Compare with previous trip

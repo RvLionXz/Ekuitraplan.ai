@@ -6,33 +6,45 @@ export { fetchWithRetry } from "./retry";
 export const ITINERARY_TOOL = {
   name: "generate_regenerative_itinerary",
   description:
-    "Generate complete travel itinerary with carbon calculation and eco activity suggestions.",
+    "Generate complete travel itinerary with carbon calculation and eco activity suggestions. KOSONGKAN itinerary JIKA info wajib belum lengkap!",
   parameters: {
     type: Type.OBJECT,
     properties: {
-      chat_response: { type: Type.STRING, description: "Warm closing message" },
+      chat_response: { type: Type.STRING, description: "Warm closing message OR pertanyaan jika info kurang" },
+      needs_more_info: { 
+        type: Type.BOOLEAN, 
+        description: "TRUE jika perlu tanya info lagi. JANGAN generate itinerary jika TRUE!" 
+      },
+      missing_info: {
+        type: Type.ARRAY,
+        description: "Daftar info yang masih kurang: dari mana, budget, jumlah orang, dll",
+        items: { type: Type.STRING }
+      },
       trip_metadata: {
         type: Type.OBJECT,
+        description: "WAJIB ada region, from_location, duration_days jika generate itinerary",
         properties: {
           title: { type: Type.STRING, description: "Trip title" },
-          region: { type: Type.STRING, description: "Destination region" },
-          from_location: { type: Type.STRING, description: "Origin city for carbon calculation" },
+          region: { type: Type.STRING, description: "Destination region - WAJIB" },
+          from_location: { type: Type.STRING, description: "Origin city for carbon calculation - WAJIB" },
           duration_days: {
             type: Type.NUMBER,
             description: "JUMLAH HARI yang diminta user - WAJIB SESUAI dengan input"
           },
           total_eco_score: { type: Type.NUMBER, description: "Eco score 0-100" }
-        }
+        },
+        required: ["region", "from_location", "duration_days"]
       },
       carbon_data: {
         type: Type.OBJECT,
-        description: "Carbon emissions from transportation",
+        description: "Carbon emissions from transportation - WAJIB jika generate itinerary",
         properties: {
           total_emissions_kg: { type: Type.NUMBER, description: "Total carbon emissions in kg" },
           emissions_with_buffer_kg: { type: Type.NUMBER, description: "Emissions with 10% buffer" },
           transport_type: { type: Type.STRING, description: "Type of transport (flight/car)" },
           distance_km: { type: Type.NUMBER, description: "Total distance in km" }
-        }
+        },
+        required: ["total_emissions_kg", "distance_km"]
       },
       eco_activity: {
         type: Type.OBJECT,
@@ -65,7 +77,7 @@ export const ITINERARY_TOOL = {
       itinerary: {
         type: Type.ARRAY,
         description:
-          "Daily itinerary array - WAJIB contiene exactamente duration_days yang diminta user. Ejemplo: kalau user minta 20 hari, itinerary HARUS contain tepat 20 hari dengan day 1-20.",
+          "KOSONGKAN array ini JIKA info wajib belum lengkap! Generate hanya jika SEMUA info wajib (from_location, budget, jumlah_orang) sudah ada. Jika 7 hari diminta, HARUS ada 7 entries (day 1-7).",
         items: {
           type: Type.OBJECT,
           properties: {
@@ -102,6 +114,6 @@ export const ITINERARY_TOOL = {
         }
       }
     },
-    required: ["chat_response", "trip_metadata", "itinerary", "carbon_data", "recommended_activities"]
+    required: ["chat_response"]
   }
 };

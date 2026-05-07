@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -57,58 +57,44 @@ function PlannerContent() {
   const [ecoComparisons, setEcoComparisons] = useState<any[]>([]);
   const [recommendedActivities, setRecommendedActivities] = useState<any[]>([]);
   const [selectedHotel, setSelectedHotel] = useState<any>(null);
-  const [hasTriggeredInitial, setHasTriggeredInitial] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const initialQueryRef = useRef(initialQuery);
+  const messagesRef = useRef(messages);
 
-  // Initial trigger if there's a query from landing page
+  // Keep messagesRef in sync with state
   useEffect(() => {
-    if (initialQuery && messages.length === 0 && !hasTriggeredInitial) {
-      setHasTriggeredInitial(true);
-      handleSendMessage(initialQuery);
-    }
-  }, [initialQuery, hasTriggeredInitial]);
+    messagesRef.current = messages;
+  }, [messages]);
 
-  // Set initial hovered item when itinerary or discovery data arrives
-  useEffect(() => {
-    if (discoveryData?.hotels?.[0]) {
-      setHoveredItem({
-        type: 'hotel',
-        name: discoveryData.hotels[0].name,
-        image: discoveryData.hotels[0].image,
-        location: discoveryData.hotels[0].region || itinerary?.trip_metadata?.region,
-        label: 'Rekomendasi Utama'
-      });
-    } else if (itinerary?.itinerary?.[0]?.activities?.[0]) {
-      const firstAct = itinerary.itinerary[0].activities[0];
-      setHoveredItem({
-        type: 'activity',
-        name: firstAct.activity,
-        image: '/images/generic-eco.png',
-        location: firstAct.location,
-        label: 'Hari 1'
-      });
-    }
-  }, [discoveryData, itinerary]);
-
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return;
     
+    // Cancel any pending request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     const userMessage = { role: 'user' as const, content: text };
-    const newMessages = [...messages, userMessage];
+    const currentMessages = messagesRef.current;
+    const newMessages = [...currentMessages, userMessage];
+    
     setMessages(newMessages);
     setInputValue("");
     setIsGenerating(true);
 
     try {
+      // Use messagesRef to always get current messages
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: newMessages }),
+        signal: abortControllerRef.current.signal,
       });
 
       const data = await response.json();
       if (data.error) throw new Error(data.error);
 
-      // Mapping structured fields
       if (data.itinerary_data) {
         setItinerary(data.itinerary_data);
       }
@@ -145,7 +131,11 @@ function PlannerContent() {
           recommendedActivities: data.recommended_activities || []
         }
       }]);
-    } catch (error) {
+    } catch (error: any) {
+      // Ignore abort errors (cancelled requests)
+      if (error.name === 'AbortError') {
+        return;
+      }
       console.error("Failed to send message:", error);
       setMessages(prev => [...prev, { 
         role: 'ai', 
@@ -153,8 +143,78 @@ function PlannerContent() {
       }]);
     } finally {
       setIsGenerating(false);
+      abortControllerRef.current = null;
     }
-  };
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Initial trigger if there's a query from landing page
+  useEffect(() => {
+    let cancelled = false;
+    
+    if (initialQueryRef.current && messages.length === 0) {
+      const query = initialQueryRef.current;
+      initialQueryRef.current = "";
+      setMessages([{ role: 'user' as const, content: query }]);
+      setInputValue("");
+      setIsGenerating(true);
+      
+      // Cancel any pending request and create new one
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+      
+      // Direct fetch without handleSendMessage to avoid closure issues
+      fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [{ role: 'user' as const, content: query }] }),
+        signal: abortControllerRef.current.signal,
+      }).then(res => res.json()).then(data => {
+        if (cancelled) return;
+        
+        if (data.itinerary_data) setItinerary(data.itinerary_data);
+        if (data.carbon_data) setCarbonData(data.carbon_data);
+        if (data.enriched_data) setDiscoveryData(data.enriched_data);
+        if (data.eco_activity) setEcoActivity(data.eco_activity);
+        if (data.eco_comparisons) setEcoComparisons(data.eco_comparisons);
+        if (data.recommended_activities) setRecommendedActivities(data.recommended_activities);
+        setMessages(prev => [...prev, {
+          role: 'ai',
+          content: data.chat_response || "Berikut adalah rencana perjalanan Anda.",
+          data: {
+            itinerary: data.itinerary_data,
+            discoveryData: data.enriched_data,
+            carbonData: data.carbon_data,
+            ecoActivity: data.eco_activity,
+            ecoComparisons: data.eco_comparisons,
+            recommendedActivities: data.recommended_activities || []
+          }
+        }]);
+      }).catch(error => {
+        if (cancelled || error.name === 'AbortError') return;
+        console.error("Initial request failed:", error);
+      }).finally(() => {
+        if (!cancelled) {
+          setIsGenerating(false);
+          abortControllerRef.current = null;
+        }
+      });
+    }
+    
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <main className="h-screen flex flex-col lg:flex-row overflow-hidden bg-warm-cream">
