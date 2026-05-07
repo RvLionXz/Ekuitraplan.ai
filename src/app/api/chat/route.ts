@@ -60,41 +60,62 @@ export async function POST(req: Request) {
     const lastMessage = messages[messages.length - 1].content;
 
     // ═══════════════════════════════════════════════════════════
-    // REVISION DETECTION - Load previous trip metadata
+    // PRE-VALIDATION: Quick check if info is complete
+    // Skip Maps grounding if likely needs more info
     // ═══════════════════════════════════════════════════════════
-    // For now, use simple heuristic (messages count > 1 = likely revision)
-    // In production, load from database using userId
+    const hasDestination = lastMessage.length > 3;
+    const extractedDuration = extractDurationFromText(lastMessage);
+    console.log(`[duration] Extracted duration: ${extractedDuration} days`);
+    
+    // Quick heuristics for "info likely incomplete"
+    // - Single short message = likely initial request (needs more info)
+    // - Messages count = 1 and doesn't contain budget/jumlah_orang keywords
+    const isInitialRequest = messages.length === 1;
+    const hasBudgetKeywords = /budget|rp\.?|juta|million/i.test(lastMessage);
+    const hasJumlahKeywords = /orang|orangnya|bersama|dengan|sama|travellers|travelers/i.test(lastMessage);
+    const likelyNeedsMoreInfo = isInitialRequest && (!hasBudgetKeywords || !hasJumlahKeywords);
+    
+    console.log(`[precheck] isInitialRequest: ${isInitialRequest}, hasBudgetKeywords: ${hasBudgetKeywords}, hasJumlahKeywords: ${hasJumlahKeywords}`);
+    console.log(`[precheck] likelyNeedsMoreInfo: ${likelyNeedsMoreInfo}`);
+    
+    // If likely needs more info, skip Maps grounding entirely
+    // This saves API calls and time when user just entered initial prompt
+    if (likelyNeedsMoreInfo) {
+      console.log("[precheck] Skipping Maps grounding - will ask for more info");
+      
+      // Return a "needs more info" response without Maps call
+      // The actual logic will be handled by Step 2 function calling
+      // But we skip the expensive Maps API call here
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // REVISION DETECTION
+    // ═══════════════════════════════════════════════════════════
     const isLikelyRevision = messages.length > 1;
-    const previousTrip = null; // Would load from DB in production: await getPreviousTripMetadata(userId)
+    const previousTrip = null;
     
     // Get system prompt based on model
     const systemPrompt = currentModel.provider === "gemini" 
       ? systemPrompts.travelPlannerMinimal 
       : systemPrompts.travelPlanner;
     
-    // Use user input directly for Maps context - trust AI to understand destination
-    // No regex parsing needed - Maps Grounding will handle location via AI
+    // Use user input directly for Maps context
     const locationContext = lastMessage;
-    
-    // Extract duration from user input
-    const durationDays = extractDurationFromText(lastMessage);
-    console.log(`[duration] Extracted duration: ${durationDays} days`);
     
     console.log(`[maps] Using user input directly: ${locationContext.substring(0, 50)}...`);
     
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // STEP 1: Maps Grounding Call (separate, text-only)
-    // We call the model with ONLY googleMaps tool to force
-    // grounded place search. No regex or coordinates needed.
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ═══════════════════════════════════════════════════════════
+    // STEP 1: Maps Grounding Call (SKIP if likely needs more info)
+    // ═══════════════════════════════════════════════════════════
     let mapsContext = "";
     let groundingChunks: any[] = [];
     
-    if (locationContext && locationContext.length > 3) {
+    // Skip Maps grounding if likely needs more info OR destination is unclear
+    if (locationContext && locationContext.length > 3 && !likelyNeedsMoreInfo) {
       try {
         const mapsPrompt = `Berikan informasi tentang tempat wisata, restoran, dan aktivitas menarik di ${locationContext}. Fokus pada tempat yang eco-friendly dan berkelanjutan. Sertakan nama tempat, lokasi, dan deskripsi singkat.`;
         
-        // Use retry for Maps grounding call (might hit rate limits)
+        // Use retry for Maps grounding call
         const mapsResponse = await fetchWithRetry(
           "Maps grounding (Step 1)",
           () => ai.models.generateContent({
@@ -158,6 +179,7 @@ export async function POST(req: Request) {
     console.log("[maps] Step 2: Generating itinerary with function calling...");
     
     // Build duration instruction
+    const durationDays = extractedDuration; // Use the extracted value
     const durationInstruction = durationDays 
       ? `\n📅 DURASI: User meminta ${durationDays} hari. WAJIB generate itinerary dengan tepat ${durationDays} hari!\n⚠️ JANGAN 生成 kurang dari yang diminta!` 
       : `\n📅 DURASI: Tidak terdeteksi! Jika durasi tidak jelas, tanya user dulu перед generate!`;

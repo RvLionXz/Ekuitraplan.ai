@@ -99,9 +99,10 @@ export default function Home() {
                       <Waves size={18} className="md:w-5 md:h-5" />
                     </button>
                   </div>
-                  <button 
+                  <button
                     onClick={() => router.push(`/planner?q=${encodeURIComponent(searchValue)}`)}
-                    disabled={!searchValue.trim()}
+                    disabled={searchValue.trim() === ""}
+                    suppressHydrationWarning
                     className="button-gradient text-white px-5 md:px-8 py-2.5 md:py-3 rounded-xl md:rounded-2xl text-sm md:text-base font-bold flex items-center gap-2 transition-all shadow-lg active:scale-95 group disabled:opacity-50"
                   >
                     <Zap size={16} className="md:w-[18px] md:h-[18px] fill-current group-hover:animate-pulse" />
